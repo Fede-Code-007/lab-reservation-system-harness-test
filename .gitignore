@@ -1,0 +1,15 @@
+# Dependencias
+node_modules/
+
+# Archivos generados
+dist/
+
+# Base de datos local
+data/*.db
+data/*.db-*
+
+# Variables de entorno
+.env
+
+# Archivos del sistema operativo
+.DS_Store
