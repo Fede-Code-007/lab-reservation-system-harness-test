@@ -3,6 +3,10 @@ node_modules/
 
 # Archivos generados
 dist/
+coverage/
+
+# Compilación del cliente
+client/dist/
 
 # Base de datos local
 data/*.db
