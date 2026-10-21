@@ -5,6 +5,7 @@ import {
   AvailabilityResponseSchema,
   EquipmentListResponseSchema,
   EquipmentParamsSchema,
+  ErrorResponseSchema,
 } from '../../schemas/index.js';
 import { createReservationRepository } from '../reservations/reservations.repository.js';
 import { createEquipmentRepository } from './equipment.repository.js';
@@ -36,6 +37,8 @@ export function registerEquipmentRoutes(app: TypeboxApp, db: Db): void {
         querystring: AvailabilityQuerySchema,
         response: {
           200: AvailabilityResponseSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
         },
       },
     },

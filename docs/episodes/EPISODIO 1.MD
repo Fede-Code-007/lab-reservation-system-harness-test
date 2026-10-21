@@ -22,7 +22,7 @@ El episodio se realizó con **MiniMax M3.1 Flash (free)** mediante OpenCode. El 
 
 El extracto de la instrucción fue el siguiente:
 
-> Implementá reservations.service y reservations.repository con TDD, según SPEC,md  sección 5, 6 y 11. Escribí primero tests Vitest para CA-01 a CA-06 y CA-08: creación válida, superposición (10:30-11:30 sobre 10:00-11:00), límites consecutivos (11:00-12:00), MIC-02 simultáneo, solicitante vacío o solo espacios, fecha inválida, fecha sin zona, inicio >= fin, unidad inexistente, cancelación que conserva datos y libera el horario, cancelar dos veces (409). Luego el código con una transacción para chequeo + insert. Mostrame los tests antes del código.
+> Implementá reservations.service y reservations.repository con TDD, según SPEC.md  sección 5, 6 y 11. Escribí primero tests Vitest para CA-01 a CA-06 y CA-08: creación válida, superposición (10:30-11:30 sobre 10:00-11:00), límites consecutivos (11:00-12:00), MIC-02 simultáneo, solicitante vacío o solo espacios, fecha inválida, fecha sin zona, inicio >= fin, unidad inexistente, cancelación que conserva datos y libera el horario, cancelar dos veces (409). Luego el código con una transacción para chequeo + insert. Mostrame los tests antes del código.
 
 La instrucción estableció dos condiciones relevantes para la delegación: utilizar los criterios de aceptación existentes como referencia y presentar las pruebas antes de implementar la solución. También delimitó el alcance de la tarea, sin modificar la especificación ni el inventario del proyecto.
 

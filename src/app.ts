@@ -31,6 +31,15 @@ export function buildApp(options: BuildAppOptions): TypeboxApp {
     .setValidatorCompiler(TypeBoxValidatorCompiler)
     .withTypeProvider<TypeBoxTypeProvider>();
 
+  // SPEC.md §8 no define cuerpo para `POST /reservations/:id/cancel`. Se acepta
+  // cualquier `Content-Type` y el cuerpo se ignora, para que un cliente no
+  // reciba un 415 (código HTTP ausente en la especificación) al invocar un
+  // endpoint sin cuerpo. Los parsers específicos de Fastify (JSON y texto
+  // plano) siguen teniendo prioridad.
+  app.addContentTypeParser('*', { parseAs: 'string' }, (_request, _payload, done) => {
+    done(null, undefined);
+  });
+
   app.setErrorHandler<FastifyError>((error, request, reply) => {
     if (error instanceof AppError) {
       reply.status(error.statusCode).send(toErrorBody(error));

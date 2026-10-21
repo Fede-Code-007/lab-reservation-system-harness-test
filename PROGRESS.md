@@ -4,7 +4,7 @@
 - [x] 1 Andamiaje - Implementada
 - [x] 2 Base de datos - Implementada
 - [x] 3 Reglas de reservas - Implementada
-- [ ] 4 API
+- [x] 4 API - Implementada
 - [ ] 5 Persistencia
 - [ ] 6 React
 - [ ] 7 Verificación y README
@@ -34,6 +34,8 @@
 | 2026-10-21 | `POST /reservations` fija explícitamente el código 201 en la ruta | Fastify no asigna 201 por defecto en `POST`; sin `reply.status(201)` la ruta respondía 200 pese a declarar el esquema de respuesta 201 | Dejar el 200 implícito y cambiar el esquema de respuesta | La ruta hace `reply.status(201)`; verificado manualmente (`HTTP 201` con la reserva devuelta) |
 | 2026-10-21 | Aplicar el máximo de 80 caracteres del solicitante sobre el valor ya recortado | `SPEC.md` RN-02 dice que se recorta antes de guardar; el límite aplica a lo que se persiste | Validar los 80 caracteres sobre el valor original sin recortar | Un solicitante de 100 caracteres con espacios alrededor se acepta si el valor recortado entra en 80; el test del servicio lo documenta |
 | 2026-10-21 | Mantener el `415 Unsupported Media Type` de `POST /reservations/:id/cancel` ante un `Content-Type` no soportado, sin tocar la lógica de negocio ni el transporte | Decisión del desarrollador (2026-10-21): la corrección depende de qué exija el contrato de la tarea 4, que todavía no está evaluado | Aceptar `application/x-www-form-urlencoded` o ignorar el `Content-Type` en las rutas `POST` sin cuerpo (cambio de transporte sin análisis previo) | La limitación queda documentada en la tarea 3 de este archivo; si la tarea 4 exige admitir ese tipo de contenido, se corrige allí con una prueba específica |
+| 2026-10-21 | `POST /reservations/:id/cancel` acepta cualquier `Content-Type` y descarta el cuerpo | `SPEC.md` §8 no define cuerpo para ese endpoint y fija los códigos HTTP esperados (200/201/400/404/409). El `415` que devolvía Fastify ante un `Content-Type` no soportado quedaba fuera de los códigos de la especificación, y la decisión anterior quedó condicionada al contrato de la tarea 4, que exige «códigos HTTP exactamente como en el SPEC» | Mantener el `415` (comportamiento anterior) | Se registra un parser de contenido comodín (`'*'`) en `src/app.ts` que ignora el cuerpo; los parsers JSON y texto plano de Fastify conservan prioridad, así que `POST /reservations` sigue exigiendo JSON. Sustituye la fila anterior |
+| 2026-10-21 | Declarar en las rutas los esquemas de respuesta de error `400`, `404` y `409` | `SPEC.md` §8 fija el formato de error `{ "error": { "code", "message" } }`; expresarlo en typebox deja el contrato de transporte en los propios esquemas y hace que Fastify serialice las respuestas de error con esa forma | Dejar el formato de error solo en el manejador global de errores de `src/app.ts` | Se reutiliza `ErrorResponseSchema` (ya definido en `src/schemas/common.ts`) en las rutas de equipment y de reservas; el envelope queda garantizado por esquema y verificado con `app.inject` |
 
 ## Evidencias de uso del agente
 - Captura del modelo seleccionado en OpenCode: `docs/agent-evidence/Evidencia de la versión de opencode y del modelo seleccionado.png`
@@ -54,6 +56,10 @@
 - Captura de la respuesta final del cuarto prompt parte 3: `docs/agent-evidence/Respuesta Final Promp 4 - Parte 3.png`
 - Git diff luego del cuarto prompt: `docs/agent-evidence/Git diff luego del cuarto PROMPT.png`
 - Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales cuarto PROMPT.png`
+- Captura del quinto prompt: `docs/agent-evidence/Captura de pantalla del quinto PROMPT.png`
+- Resumen respuesta del quinto prompt: `docs/agent-evidence/Resumen resultados del quinto PROMPT.png`
+- Git diff luego del quinto prompt: `docs/agent-evidence/Git diff luego del quinto PROMPT.png`
+- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales quinto PROMPT.png`
 
 ## Verificaciones iniciales ejecutadas por mí
 | Comando o verificación | Versión | Resultado real |
@@ -175,7 +181,7 @@
 |Revisar el modelo de datos de §7 y el formato de `GET /equipment` contra la especificación.| - | Todo coincide correctamente |
 
 ## Tarea 3 — Reglas de reservas (SPEC.md §5 RF-03/RF-04, §6 RN-01 a RN-08, §11 CA-01 a CA-08)
-**Estado:** implementada, pendiente de verificación humana. Seatangono los servicios de reservas y de equipment, el repositorio de reservas y las utilidades compartidas de instantes ISO. No se modificaron `SPEC.md` ni `data/inventory.json`.
+**Estado:** implementada. Seatangono los servicios de reservas y de equipment, el repositorio de reservas y las utilidades compartidas de instantes ISO. No se modificaron `SPEC.md` ni `data/inventory.json`.
 
 **Requisitos atendidos:** RF-03 (crear reserva), RF-04 (cancelar conservando datos, sin borrado físico, 409 al cancelar dos veces), RF-02 (disponibilidad coherente con la creación), RN-01 (orden 400 → 404 → 409), RN-02 (solicitante no vacío, recortado, máx. 80), RN-03 (inicio < fin), RN-04 (criterio de superposición, límites consecutivos permitidos), RN-05 (independencia entre unidades), RN-06 (las canceladas no bloquean), RN-07 (transacción para comprobación + inserción), RN-08 (instantes con zona explícita, normalizados a UTC).
 
@@ -227,6 +233,57 @@
 | `npm test` | Vitest 5.0.5 | Sin errores reportados; 4 archivos pasados, 63 pruebas pasadas y 2 pruebas `todo` |
 | `npm run build` | TypeScript 6.0.3 | Exit 0 |
 | Revisar las reglas de RN-01 a RN-08 y los criterios CA-01 a CA-08 contra la implementación | - | Todo concuerda perfectamente |
+
+## Tarea 4 — API REST (SPEC.md §8)
+**Estado:** implementada. Se completaron las seis rutas de §8 con esquemas typebox y se agregaron pruebas de contrato con `fastify.inject`. No se modificaron `SPEC.md` ni `data/inventory.json`.
+
+**Requisitos atendidos:** §8 completo: los seis endpoints (`GET /equipment`, `GET /equipment/:id/availability`, `GET /reservations`, `POST /reservations`, `GET /reservations/:id`, `POST /reservations/:id/cancel`), el cuerpo de `POST /reservations` (`equipmentId`, `requester`, `startAt`, `endAt`), los parámetros `start`/`end` de la disponibilidad, los formatos JSON de reserva, disponibilidad y error, y los códigos HTTP 200/201/400/404/409 con los códigos de error `VALIDATION_ERROR`, `NOT_FOUND`, `OVERLAP` y `ALREADY_CANCELLED`.
+
+**Archivos creados**
+- `tests/api.test.ts` — 37 pruebas de contrato con `fastify.inject` sobre los seis endpoints de §8: el ejemplo literal de §8 (MIC-01, `Ana Ficticia`, `2026-11-02T10:00:00-03:00` a `11:00:00-03:00`) con la respuesta normalizada a UTC, el par MIC-01/MIC-02 del mismo intervalo (RN-05/CA-04), el envelope `{ "error": { "code", "message" } }` de todas las respuestas de error y la persistencia en base de las reservas creadas y canceladas.
+
+**Archivos modificados**
+- `src/app.ts` — parser de contenido comodín (`'*'`) que ignora el cuerpo: `POST /reservations/:id/cancel` responde 200 en lugar de 415 ante un `Content-Type` no soportado. Los parsers JSON y texto plano de Fastify conservan prioridad, de modo que `POST /reservations` sigue exigiendo JSON.
+- `src/modules/equipment/equipment.routes.ts` — se declaran `400` y `404` con `ErrorResponseSchema` en la consulta de disponibilidad.
+- `src/modules/reservations/reservations.routes.ts` — se declaran `400`, `404` y `409` con `ErrorResponseSchema` en las cuatro rutas.
+
+**Sin reglas de negocio en las rutas:** las seis rutas solo traducen solicitud y respuesta. El orden de validación 400 → 404 → 409, el recorte y el límite de 80 caracteres del solicitante, la comparación de instantes, la comprobación de superposiciones, la transacción de SQLite y la cancelación sin borrado físico siguen íntegramente en `reservations.service.ts` y `equipment.service.ts`.
+
+**Verificaciones ejecutadas por el agente (resultados reales)**
+| Comprobación | Resultado real |
+|---|---|
+| Pruebas escritas antes de implementar | No se aplicó fase roja: las rutas ya existían de las tareas 2 y 3. Esta tarea agregó las pruebas de contrato de §8 y corrigió el único desvío detectado en la revisión (el `415` de la cancelación) |
+| `npm run typecheck` | Sin errores (0 diagnósticos) |
+| `npm test` | 5 archivos de prueba, 100 aprobadas, 2 `todo` pendientes, 0 fallos (antes: 4 archivos, 63 aprobadas, 2 `todo`) |
+| `npm run build` | Sin errores; generó `dist/` |
+| `npx vitest run tests/api.test.ts` | 1 archivo, 37 pruebas aprobadas, 0 fallos |
+| `GET /equipment` (curl, base temporal) | `200` → los 5 equipos de §4, ordenados por id |
+| `POST /reservations` con el cuerpo literal de §8 | `201` → `{"id":"ca942cac-…","equipmentId":"MIC-01","requester":"Ana Ficticia","startAt":"2026-11-02T13:00:00.000Z","endAt":"2026-11-02T14:00:00.000Z","status":"ACTIVE","createdAt":"…","cancelledAt":null}` |
+| `POST /reservations` para MIC-02 con el mismo intervalo | `201` (RN-05; ejemplo MIC-01/MIC-02) |
+| `GET /equipment/MIC-01/availability` y `GET /equipment/MIC-02/availability` | `200` → `available: false` con el id de la reserva correspondiente en `conflicts`, en ambas unidades |
+| `POST /reservations` superpuesto (10:30-11:30 sobre 10:00-11:00) | `409` → `{"error":{"code":"OVERLAP","message":"La unidad \"MIC-01\" ya tiene una reserva activa para ese intervalo."}}` |
+| `GET /reservations?equipmentId=MIC-01` y `GET /reservations` | `200` con el arreglo de reservas activas y canceladas |
+| `GET /reservations/:id` | `200` con la reserva; `404` `NOT_FOUND` para un id inexistente |
+| `POST /reservations/:id/cancel` con `Content-Type: application/x-www-form-urlencoded` | `200` con la reserva en `CANCELLED` y `cancelledAt` informado (antes respondía `415`) |
+| `POST /reservations/:id/cancel` repetido | `409` → `{"error":{"code":"ALREADY_CANCELLED",…}}` |
+| Disponibilidad sin zona horaria / con unidad inexistente | `400` `VALIDATION_ERROR` / `404` `NOT_FOUND` |
+| `GET /ruta-inexistente` | `404` `NOT_FOUND` con el envelope de §8 |
+| `POST /reservations` con cuerpo incompleto | `400` `VALIDATION_ERROR` |
+| Estado de `data/reservas.db` tras la verificación | 5 unidades, 0 reservas y una única migración `001_initial`; la verificación manual se hizo contra una base temporal ya eliminada |
+
+**Hallazgos y pendientes**
+- El `415 Unsupported Media Type` de `POST /reservations/:id/cancel` quedó corregido (decisión del 2026-10-21 en la tabla de decisiones de este archivo), con la prueba específica en `tests/api.test.ts`.
+- `GET /reservations?equipmentId=` (valor vacío) responde `400 VALIDATION_ERROR` porque el esquema exige un identificador no vacío. `SPEC.md` no define ese caso; queda documentado como comportamiento vigente.
+- CA-07 (persistencia tras reiniciar el servidor) y el `todo` de RF-01 siguen pendientes y pertenecen a las tareas 5 y 2 respectivamente. **No se marcan como completados** hasta implementar y verificar la tarea correspondiente.
+- La documentación de `README.md` (§12) todavía no incluye los ejemplos de los endpoints de reservas, que ahora responden con datos reales. Queda pendiente de la tarea 7.
+
+### Verificaciones ejecutadas por mí
+| Comando o verificación | Versión | Resultado real |
+|---|---|---|
+| `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
+| `npm test` | Vitest 5.0.5 | Sin errores reportados; 5 archivos pasados, 100 pruebas pasadas y 2 pruebas `todo` |
+| `npm run build` | TypeScript 6.0.3 | Exit 0 |
+
 
 
 

@@ -2,6 +2,7 @@ import type { Db } from '../../db/database.js';
 import type { TypeboxApp } from '../../types.js';
 import {
   CreateReservationBodySchema,
+  ErrorResponseSchema,
   ReservationListQuerySchema,
   ReservationListResponseSchema,
   ReservationParamsSchema,
@@ -24,6 +25,7 @@ export function registerReservationsRoutes(app: TypeboxApp, db: Db): void {
         querystring: ReservationListQuerySchema,
         response: {
           200: ReservationListResponseSchema,
+          400: ErrorResponseSchema,
         },
       },
     },
@@ -37,6 +39,9 @@ export function registerReservationsRoutes(app: TypeboxApp, db: Db): void {
         body: CreateReservationBodySchema,
         response: {
           201: ReservationSchema,
+          400: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
         },
       },
     },
@@ -53,6 +58,7 @@ export function registerReservationsRoutes(app: TypeboxApp, db: Db): void {
         params: ReservationParamsSchema,
         response: {
           200: ReservationSchema,
+          404: ErrorResponseSchema,
         },
       },
     },
@@ -66,6 +72,8 @@ export function registerReservationsRoutes(app: TypeboxApp, db: Db): void {
         params: ReservationParamsSchema,
         response: {
           200: ReservationSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
         },
       },
     },
