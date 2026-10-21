@@ -17,7 +17,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx src/db/seed.ts",
-    "db:reset": "tsx src/db/reset.ts"
+    "db:reset": "tsx src/db/reset.ts",
+    "client:dev": "npm --prefix client run dev",
+    "client:build": "npm --prefix client run build"
   },
   "dependencies": {
     "@fastify/type-provider-typebox": "^6.3.0",

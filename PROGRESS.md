@@ -6,7 +6,7 @@
 - [x] 3 Reglas de reservas - Implementada
 - [x] 4 API - Implementada
 - [x] 5 Persistencia - Implementada 
-- [ ] 6 React
+- [x] 6 React - Implementada 
 - [ ] 7 Verificación y README
 
 ## Decisiones
@@ -37,6 +37,11 @@
 | 2026-10-21 | `POST /reservations/:id/cancel` acepta cualquier `Content-Type` y descarta el cuerpo | `SPEC.md` §8 no define cuerpo para ese endpoint y fija los códigos HTTP esperados (200/201/400/404/409). El `415` que devolvía Fastify ante un `Content-Type` no soportado quedaba fuera de los códigos de la especificación, y la decisión anterior quedó condicionada al contrato de la tarea 4, que exige «códigos HTTP exactamente como en el SPEC» | Mantener el `415` (comportamiento anterior) | Se registra un parser de contenido comodín (`'*'`) en `src/app.ts` que ignora el cuerpo; los parsers JSON y texto plano de Fastify conservan prioridad, así que `POST /reservations` sigue exigiendo JSON. Sustituye la fila anterior |
 | 2026-10-21 | Declarar en las rutas los esquemas de respuesta de error `400`, `404` y `409` | `SPEC.md` §8 fija el formato de error `{ "error": { "code", "message" } }`; expresarlo en typebox deja el contrato de transporte en los propios esquemas y hace que Fastify serialice las respuestas de error con esa forma | Dejar el formato de error solo en el manejador global de errores de `src/app.ts` | Se reutiliza `ErrorResponseSchema` (ya definido en `src/schemas/common.ts`) en las rutas de equipment y de reservas; el envelope queda garantizado por esquema y verificado con `app.inject` |
 | 2026-10-21 | Verificar la persistencia mediante el comportamiento observable de la API y no solo con consultas SQL | «La reserva activa sigue bloqueando su intervalo y la cancelada no» son reglas de negocio (RN-04/RN-06) que se comprueban mejor con la disponibilidad y la creación de reservas que con el estado de las filas | Consultas SQL directas sobre la tabla `reservations` | La prueba CA-07 usa `app.inject` para la disponibilidad, la creación y la cancelación; las consultas SQL quedan solo para comprobar que la fila cancelada no se eliminó físicamente (RF-04) |
+| 2026-10-21 | Cliente web como proyecto npm independiente en `client/` (con su propio `package.json` y `package-lock.json`), en lugar de un workspace de npm | Mantiene intacto el `package-lock.json` de la raíz y evita que `npm install` en la raíz modifique el árbol de dependencias del backend. Los scripts raíz `client:dev` y `client:build` ejecutan `npm --prefix client run …`, que funciona igual en Windows y en Linux/macOS | Workspaces de npm (`"workspaces": ["client"]`) | La instalación del cliente es un paso explícito aparte; el backend no se ve afectado por las dependencias de React |
+| 2026-10-21 | El cliente no incluye un ejecutor de pruebas propio: la conversión de zona horaria se prueba con el Vitest de la raíz desde `tests/client-datetime.test.ts` | `SPEC.md` §3 no exige un framework de pruebas para el cliente y §3/§10 prohíben agregar dependencias innecesarias; el cliente solo traduce datos y llama a la API | Agregar Vitest + jsdom + Testing Library en `client/` | Las 9 pruebas de `tests/client-datetime.test.ts` se ejecutan con `npm test` de la raíz, sin dependencias nuevas. La cobertura automatizada del cliente se limita a la lógica de zona horaria; el resto de la interfaz queda para verificación manual |
+| 2026-10-21 | El cliente usa `Intl` (`America/Argentina/Buenos_Aires`) para convertir la hora local a UTC en lugar de fijar el desplazamiento `-03:00` | `SPEC.md` RN-08 exige zona explícita y normalización a UTC; calcular el desplazamiento real evita duplicar el supuesto de zona horaria en el código | Concatenar `-03:00` al valor local | `client/src/lib/datetime.ts` calcula el desplazamiento de la zona para cada instante con `Intl.DateTimeFormat` y refina el resultado; las pruebas cubren la medianoche, los segundos, las fechas inexistentes y el cruce de día |
+| 2026-10-21 | El proxy de Vite reenvía los prefijos `/equipment` y `/reservations` al backend, con destino configurable por `API_PROXY_TARGET` | `SPEC.md` §3 exige que el cliente consuma la API mediante el proxy de Vite; el destino por defecto es `http://127.0.0.1:3000`, que coincide con `HOST`/`PORT` de `src/config/index.ts` | Proxy de `/` (rompería la carga de módulos del propio Vite) | `client/vite.config.ts` define el proxy para `server` y para `preview`; el navegador nunca hace peticiones cross-origin, por lo que no hace falta CORS en la API. El servidor de Vite escucha en `127.0.0.1` (explícito) porque con el valor por defecto `localhost` se enlazaba solo a IPv6 y no respondía en `http://127.0.0.1:5173` |
+| 2026-10-21 | Completar la verificación manual del cliente React | Comprobar el comportamiento de la interfaz integrada con la API y la persistencia | Confiar únicamente en las pruebas automatizadas y en la verificación del agente | Se completaron las comprobaciones manuales de inventario, disponibilidad, creación, conflictos, cancelación e historial de reservas |
 
 ## Evidencias de uso del agente
 - Captura del modelo seleccionado en OpenCode: `docs/agent-evidence/Evidencia de la versión de opencode y del modelo seleccionado.png`
@@ -65,6 +70,15 @@
 - Resumen respuesta del sexto prompt: `docs/agent-evidence/Resumen resultados del sexto PROMPT.png`
 - Git diff luego del sexto prompt: `docs/agent-evidence/Git diff luego del sexto PROMPT.png`
 - Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales sexto PROMPT.png`
+- Captura del septimo prompt: `docs/agent-evidence/Captura de pantalla del septimo PROMPT.png`
+- Resumen respuesta del septimo prompt: `docs/agent-evidence/Resumen resultados del septimo PROMPT.png`
+- Git diff luego del septimo prompt: `docs/agent-evidence/Git diff luego del septimo PROMPT.png`
+- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales septimo PROMPT.png`
+- Captura de la interfaz gráfica: `docs/agent-evidence/Captura de la interfaz.png`
+- Captura de consulta de disponibilidad (reserva disponible): `docs/agent-evidence/Consulta disponibilidad.png`
+- Captura de consulta de disponibilidad (reserva no disponible): `docs/agent-evidence/Consulta no disponible.png`
+- Error al intentar reservar en un horario no disponible: `docs/agent-evidence/Conflicto reserva.png`
+- Reserva cancelada, el horario vuelve a estar disponible: `docs/agent-evidence/Reserva cancelada.png`
 
 ## Verificaciones iniciales ejecutadas por mí
 | Comando o verificación | Versión | Resultado real |
@@ -314,7 +328,7 @@
 
 **Pendientes**
 - `README.md` (§12) todavía no documenta la ubicación de la base de datos, el uso de `DB_PATH` ni el procedimiento de reinicio: pendiente de la tarea 7.
-- La interfaz web (tarea 6) todavía no consume la API.
+- La interfaz web (tarea 6) todavía no consume la API. **Actualización posterior a la tarea 6:** la interfaz quedó implementada y verificada contra la API en ejecución; ver la sección de la tarea 6.
 
 ### Verificaciones ejecutadas por mí
 | Comando o verificación | Versión | Resultado real |
@@ -322,6 +336,62 @@
 | `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
 | `npm test` | Vitest 5.0.5 | Sin errores reportados; 5 archivos pasados, 102 pruebas pasadas y 0 pruebas `todo` |
 | `npm run build` | TypeScript 6.0.3 | Exit 0 |
+
+## Tarea 6 — Interfaz web mínima (SPEC.md §3, §5 RF-06, §9)
+**Estado:** implementada y verificada.
+
+**Requisitos atendidos:** RF-06 (listar equipos, consultar disponibilidad, crear una reserva, ver el historial con estado y cancelar; captura y muestra en America/Argentina/Buenos_Aires y envío en UTC), §3 (React + Vite + TypeScript en `client/`, sin librerías de UI, consumo de la API por proxy de Vite) y §9 (el cliente solo presenta datos; la lógica de negocio permanece en los servicios del backend).
+
+**Archivos creados**
+- `client/package.json` — proyecto npm independiente: `react@^19.3.1`, `react-dom@^19.3.1`; `vite@^8.3.5`, `@vitejs/plugin-react@^6.1.2`, `typescript@^6.0.3` (misma versión que la raíz), `@types/react@^19.3.0`, `@types/react-dom@^19.3.0`, `@types/node@^24.19.2`. Scripts `dev`, `build` (`npm run typecheck && vite build`), `preview` y `typecheck`.
+- `client/index.html`, `client/src/main.tsx`, `client/src/styles.css` — punto de entrada y estilos propios, sin librerías de UI.
+- `client/vite.config.ts` — plugin de React y proxy de `/equipment` y `/reservations` hacia `http://127.0.0.1:3000` (configurable con `API_PROXY_TARGET`), tanto en `server` como en `preview`.
+- `client/tsconfig.json` (código de la aplicación, `types: []` para no exponer los tipos de Node al navegador) y `client/tsconfig.node.json` (`vite.config.ts`, `types: ["node"]`). Se eligieron dos configuraciones sin referencias de proyecto para no depender de `tsc -b`.
+- `client/src/types.ts` — tipos del contrato de la API (§8) y `IntervalField`.
+- `client/src/api.ts` — cliente HTTP: `listEquipment`, `checkAvailability`, `listReservations`, `createReservation`, `cancelReservation`. Traduce el envelope `{ "error": { "code", "message" } }` a `ApiError` y muestra el mensaje de la API sin reinterpretarlo.
+- `client/src/lib/datetime.ts` — conversión entre la hora local y UTC con `Intl` (`America/Argentina/Buenos_Aires`).
+- `client/src/components/EquipmentList.tsx` — inventario con selección de la unidad.
+- `client/src/components/AvailabilityPanel.tsx` — consulta de disponibilidad e informe de conflictos.
+- `client/src/components/ReservationForm.tsx` — formulario de reserva.
+- `client/src/components/ReservationTable.tsx` — historial con estado y botón «Cancelar».
+- `client/src/App.tsx` — composición, estado compartido (equipo seleccionado, intervalo, solicitante) y manejo de errores.
+- `tests/client-datetime.test.ts` — 9 pruebas de la conversión de zona horaria, ejecutadas con el Vitest de la raíz.
+
+**Archivos modificados**
+- `package.json` — se agregaron los scripts raíz `client:dev` (`npm --prefix client run dev`) y `client:build` (`npm --prefix client run build`).
+- `PROGRESS.md` — registro de esta tarea y de las decisiones asociadas.
+
+**Sin reglas de negocio en el cliente:** el cliente no valida superposiciones, ni el orden de las fechas, ni el solicitante, ni el límite de 80 caracteres. Solo exige la presencia de los campos (`required` de HTML), traduce la zona horaria y muestra los mensajes de error de la API. La disponibilidad, la creación y la cancelación se resuelven íntegramente en los servicios del backend.
+
+**Verificaciones ejecutadas por el agente (resultados reales)**
+| Comprobación | Resultado real |
+|---|---|
+| `npx vitest run tests/client-datetime.test.ts` | 1 archivo, 9 pruebas aprobadas, 0 fallos (primera ejecución: 1 fallo por el formato `es-AR` con `dateStyle`; se ajustó `formatUtcForDisplay` a un formato determinista `dd/mm/aaaa hh:mm` y la prueba pasó) |
+| `npm install --prefix client` (con aprobación del desarrollador) | `added 25 packages, and audited 26 packages in 20s`; 0 vulnerabilidades; se generó `client/package-lock.json` |
+| `npm run client:build` | `typecheck` del cliente sin errores (0 diagnósticos en `tsconfig.json` y en `tsconfig.node.json`) y build de Vite correcto: `dist/index.html` 0.41 kB, `dist/assets/index-*.css` 2.30 kB, `dist/assets/index-*.js` 230.59 kB (71.88 kB gzip), 22 módulos transformados |
+| `npm run typecheck` (raíz) | Sin errores (0 diagnósticos), con el nuevo archivo de pruebas que importa `client/src/lib/datetime.ts` |
+| `npm test` (raíz) | 6 archivos de prueba, 111 aprobadas, 0 `todo` pendientes, 0 fallos (antes: 5 archivos y 102 aprobadas) |
+| `npm run build` (raíz) | Sin errores; generó `dist/` |
+| `npm run client:dev` + `node dist/server.js` (API con `DB_PATH` apuntando a una base temporal) | ViteSirvió la aplicación en `http://127.0.0.1:5173` (con `host: '127.0.0.1'` explícito) y el proxy respondió: `GET /equipment` → los 5 equipos; `GET /equipment/MIC-01/availability?start=2026-11-02T13:00:00.000Z&end=2026-11-02T14:00:00.000Z` → `{"available":true,"conflicts":[]}`; `GET /reservations` → `[]` |
+| Flujo completo a través del proxy de Vite | `POST /reservations` (MIC-01, 10:00-11:00 BA = 13:00-14:00Z) → `201` con la reserva `ACTIVE`; la disponibilidad del mismo intervalo → `available:false` con el id en `conflicts`; `POST /reservations` superpuesto → `409`; `POST /reservations/:id/cancel` → `200` con la reserva `CANCELLED` y `cancelledAt` informado; `GET /reservations?equipmentId=MIC-01` → la reserva cancelada en el historial |
+| `npm --prefix client run preview` (build de producción) | Sirvió `http://127.0.0.1:4173` con el bundle generado y el proxy operativo: `GET /equipment` devolvió los 5 equipos; `index.html` referencias `/assets/index-*.js` y `/assets/index-*.css` |
+| Estado de `data/reservas.db` tras la verificación | 5 unidades, 0 reservas: la comprobación manual se hizo contra una base temporal (`DB_PATH`), que se eliminó al terminar |
+| Comprobación visual de la interfaz en un navegador | **No realizada**: no hay navegador disponible en este entorno. Queda pendiente de verificación humana |
+
+**Pendientes**
+
+- `README.md` (§12) todavía no documenta el cliente ni los scripts `client:dev`/`client:build`: pendiente de la tarea 7.
+
+### Verificaciones ejecutadas por mí
+
+| Comando o verificación | Versión | Resultado real |
+|---|---|---|
+| `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
+| `npm test` | Vitest 5.0.5 | 6 archivos, 111 pruebas pasadas, 0 fallos |
+| `npm run build` | Por confirmar | Pendiente de ejecutar y registrar el resultado final |
+| `npm run client:build` | TypeScript 6.0.3 + Vite 8.3.5 | Exit 0; bundle generado en `client/dist/` |
+| Verificación manual de la interfaz React en un navegador | Verificación humana | Completada: inventario, consulta de disponibilidad, creación de reservas, conflictos por superposición, cancelación e historial. Evidencias registradas en `docs/agent-evidence/`. |
+
 
 
 
