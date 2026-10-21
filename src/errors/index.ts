@@ -54,7 +54,7 @@ export class AlreadyCancelledError extends AppError {
 
 export class NotImplementedError extends AppError {
   constructor(feature: string) {
-    super(ERROR_CODES.NOT_IMPLEMENTED, `${feature} todavía no está implementado.`, 501);
+    super(ERROR_CODES.NOT_IMPLEMENTED, `${feature} todavía no está disponible.`, 501);
   }
 }
 

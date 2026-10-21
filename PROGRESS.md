@@ -2,7 +2,7 @@
 
 ## Estado
 - [x] 1 Andamiaje - Completada
-- [ ] 2 Base de datos
+- [x] 2 Base de datos - Completada
 - [ ] 3 Reglas de reservas
 - [ ] 4 API
 - [ ] 5 Persistencia
@@ -37,16 +37,17 @@
 - Continuación del resumen: `docs/agent-evidence/Resumen final respuesta del segundo PROMPT parte 2.png`
 - Git diff luego del segundo prompt: `docs/agent-evidence/Git diff luego del segundo PROMPT.png`
 - Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales segundo PROMPT.png` 
+- Captura del tercer prompt: `docs/agent-evidence/Captura de pantalla del tercer PROMPT.png`
+- Resultados finales del tercer prompt: `docs/agent-evidence/Captura de resultados reales del tercer PROMPT.png`
+- Git diff luego del tercer prompt: `docs/agent-evidence/Git diff luego del tercer PROMPT.png`
+- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales tercer PROMPT.png`
 
-## Verificaciones ejecutadas por mí
+## Verificaciones iniciales ejecutadas por mí
 | Comando o verificación | Versión | Resultado real |
 |---|---|---|
 | Selección del modelo en OpenCode | OpenCode 1.19.3; MiniMax M3.1 Flash (free) | Modelo seleccionado correctamente |
 | Configuración de permisos | OpenCode 1.19.3 | Modo lectura configurado correctamente|
 | Prueba: lectura de `SPEC.md` y reglas del proyecto | OpenCode 1.19.3; MiniMax M3.1 Flash (free) | Ejecutada; respuesta obtenida: resumen de las reglas del proyecto, sin modificaciones de los archivos |
-| `npm test` inicial | Vitest 5.0.5 | Sin errores reportados; 3 archivos pasados, 16 pruebas pasadas y 17 pruebas `todo` |
-| `npm run typecheck` inicial | TypeScript 6.0.3 | Exit 0 |
-| `npm run build` inicial | TypeScript 6.0.3 | Exit 0 |
 
 
 ## Tarea 1 — Andamiaje (SPEC.md §3 y §9)
@@ -66,7 +67,7 @@
 - `tests/equipment.test.ts`, `tests/reservations.test.ts`, `tests/persistence.test.ts`, `tests/helpers/test-app.ts`.
 - `.gitignore` — se agregaron `coverage/` y `client/dist/`.
 
-**Sin lógica de negocio:** los repositorios y servicios son un andamiaje sin implementar y responden `501 NOT_IMPLEMENTED`; el `409 OVERLAP` y la transactionalidad de RN-04/RN-07 quedan para la tarea 3.
+**Sin lógica de negocio:** en la tarea 1 los repositorios y servicios eran un andamiaje sin implementar y respondían `501 NOT_IMPLEMENTED`; el `409 OVERLAP` y la transactionalidad de RN-04/RN-07 quedan para la tarea 3.
 
 **Verificaciones ejecutadas por el agente (resultados reales)**
 | Comando | Resultado real |
@@ -116,3 +117,49 @@
 | `db:reset` con `data/RESERVAS.DB` | Mismo aborto y código de salida 1 (comparación insensible a mayúsculas en Windows) |
 | `npm start` (con TS 6.0.3) | Servidor en `http://127.0.0.1:3000`; `GET /equipment` → 501 `NOT_IMPLEMENTED`; sin errores en el log |
 | Limpieza | `data/lab.db` (5 unidades, 0 reservas) eliminada con aprobación humana; `data/reservas.db` es la base de desarrollo |
+
+### Verificaciones ejecutadas por mí
+| Comando o verificación | Versión | Resultado real |
+|---|---|---|
+| `npm test` | Vitest 5.0.5 | Sin errores reportados; 3 archivos pasados, 16 pruebas pasadas y 17 pruebas `todo` |
+| `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
+| `npm run build` | TypeScript 6.0.3 | Exit 0 |
+
+## Tarea 2 — Base de datos y módulo equipment (SPEC.md §7, RF-01 y §12)
+**Estado:** implementada. Requisitos atendidos: §7 (modelo de datos e idempotencia de la inicialización), RF-01 (consulta de inventario), §12 (comandos documentados de migración, carga y reinicio del entorno de prueba).
+
+**Archivos modificados**
+- `src/db/migrations/001_initial.ts` — tablas `equipment` y `reservations` según §7: `equipment(id, name)`; `reservations(id, equipment_id, requester, start_at, end_at, status, created_at, cancelled_at)` con `CHECK (status IN ('ACTIVE','CANCELLED'))`, `cancelled_at` nullable y `FOREIGN KEY (equipment_id) REFERENCES equipment(id)`.
+- `src/db/database.ts` — `PRAGMA foreign_keys = ON` y `journal_mode = WAL` en cada conexión.
+- `src/db/migrator.ts` — aplica cada migración dentro de una transacción y la tabla `schema_migrations` evita repetirlas.
+- `src/db/seed.ts` — `readInventory` valida la forma de `data/inventory.json`; `seedInventory` inserta con `ON CONFLICT (id) DO UPDATE` sobre `equipment` y no toca la tabla `reservations`.
+- `src/db/reset.ts` — `assertSeparateDatabases` aborta si el destino es la base de desarrollo; `resetTestDatabase` avisa por consola antes de borrar.
+- `src/config/index.ts` — `DB_PATH` (predeterminado `data/reservas.db`) y `TEST_DATABASE_PATH` (predeterminado `data/test.db`).
+- `src/modules/equipment/equipment.repository.ts` — `list()` y `findById()` con consultas parametrizadas.
+- `src/modules/equipment/equipment.service.ts` y `equipment.routes.ts` — `GET /equipment` devuelve el inventario como arreglo JSON; la consulta de disponibilidad sigue respondiendo `501`.
+- `src/errors/index.ts` — redacción del mensaje de "no disponible" corregida.
+- `tests/equipment.test.ts`, `tests/persistence.test.ts`, `tests/helpers/test-app.ts` — el helper ahora siembra el inventario en la base en memoria.
+
+**Verificaciones ejecutadas por el agente (resultados reales)**
+| Comprobación | Resultado real |
+|---|---|
+| Pruebas escritas antes de implementar | 6 pruebas nuevas: inventario precargado, consulta sin efectos sobre los datos, seed sin duplicar equipos, seed sin borrar reservas, clave foránea activa, `CHECK` de estado y `cancelled_at` informado |
+| `npm run typecheck` | Sin errores (0 diagnósticos) |
+| `npm test` | 3 archivos de prueba, 21 aprobadas, 16 `todo` pendientes, 0 fallos (antes: 16 aprobadas) |
+| `npm run build` | Sin errores; generó `dist/` |
+| `GET /equipment` con `npm start` | `200 OK` → `[{"id":"FUE-01","name":"Fuente de alimentación"},{"id":"MIC-01","name":"Microscopio digital"},{"id":"MIC-02","name":"Microscopio digital"},{"id":"MUL-01","name":"Multímetro"},{"id":"OSC-01","name":"Osciloscopio"}]` |
+| `GET /equipment/MIC-01/availability` | `501 NOT_IMPLEMENTED` (la consulta de disponibilidad corresponde a la tarea 3) |
+| `npm run db:reset` | `Advertencia: se van a eliminar las reservas de la base de datos de prueba: data/test.db` + `Base de datos de prueba reiniciada: data/test.db` |
+| Seed por CLI con `DB_PATH` apuntando a un archivo temporal, 3 ejecuciones | 5 unidades sin duplicar (`FUE-01`, `MIC-01`, `MIC-02`, `MUL-01`, `OSC-01`) y la reserva ficticia conservada con estado `ACTIVE` |
+| Estado de `data/reservas.db` y `data/test.db` | 5 unidades, 0 reservas y una única migración (`001_initial`) registrada en cada base |
+
+### Verificaciones ejecutadas por mí
+| Comando o verificación | Versión | Resultado real |
+|---|---|---|
+| `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
+| `npm test` | Vitest 5.0.5 | Sin errores reportados; 3 archivos pasados, 21 pruebas pasadas y 16 pruebas `todo` |
+| `npm run build` | TypeScript 6.0.3 | Exit 0 |
+|Revisar el modelo de datos de §7 y el formato de `GET /equipment` contra la especificación.| - | Todo coincide correctamente |
+
+
+

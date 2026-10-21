@@ -69,6 +69,134 @@ describe('Carga del inventario', () => {
     }
   });
 
+  it('no borra las reservas al ejecutarse dos veces', () => {
+    const db = openDatabase(':memory:');
+    try {
+      migrate(db);
+      const items = readInventory(loadConfig().inventoryFile);
+      seedInventory(db, items);
+
+      db.prepare(
+        `INSERT INTO reservations
+           (id, equipment_id, requester, start_at, end_at, status, created_at, cancelled_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        'res-ficticia',
+        'MIC-01',
+        'Ana Ficticia',
+        '2026-11-02T13:00:00.000Z',
+        '2026-11-02T14:00:00.000Z',
+        'ACTIVE',
+        '2026-10-20T12:00:00.000Z',
+        null,
+      );
+
+      seedInventory(db, items);
+      seedInventory(db, items);
+
+      const equipment = db.prepare('SELECT count(*) AS c FROM equipment').get() as { c: number };
+      const reservations = db.prepare('SELECT id, status, cancelled_at FROM reservations').all() as Array<{
+        id: string;
+        status: string;
+        cancelled_at: string | null;
+      }>;
+
+      expect(equipment.c).toBe(items.length);
+      expect(reservations).toEqual([{ id: 'res-ficticia', status: 'ACTIVE', cancelled_at: null }]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('rechaza una reserva con una unidad inexistente (clave foránea activa)', () => {
+    const db = openDatabase(':memory:');
+    try {
+      migrate(db);
+
+      expect(() =>
+        db
+          .prepare(
+            `INSERT INTO reservations
+               (id, equipment_id, requester, start_at, end_at, status, created_at, cancelled_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            'res-sin-equipo',
+            'NO-EXISTE',
+            'Ana Ficticia',
+            '2026-11-02T13:00:00.000Z',
+            '2026-11-02T14:00:00.000Z',
+            'ACTIVE',
+            '2026-10-20T12:00:00.000Z',
+            null,
+          ),
+      ).toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('rechaza un estado de reserva distinto de ACTIVE o CANCELLED', () => {
+    const db = openDatabase(':memory:');
+    try {
+      migrate(db);
+      seedInventory(db, readInventory(loadConfig().inventoryFile));
+
+      expect(() =>
+        db
+          .prepare(
+            `INSERT INTO reservations
+               (id, equipment_id, requester, start_at, end_at, status, created_at, cancelled_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            'res-estado-invalido',
+            'MIC-01',
+            'Ana Ficticia',
+            '2026-11-02T13:00:00.000Z',
+            '2026-11-02T14:00:00.000Z',
+            'PENDIENTE',
+            '2026-10-20T12:00:00.000Z',
+            null,
+          ),
+      ).toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('admite una reserva cancelada con cancelled_at informado', () => {
+    const db = openDatabase(':memory:');
+    try {
+      migrate(db);
+      seedInventory(db, readInventory(loadConfig().inventoryFile));
+
+      db.prepare(
+        `INSERT INTO reservations
+           (id, equipment_id, requester, start_at, end_at, status, created_at, cancelled_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        'res-cancelada',
+        'MIC-01',
+        'Ana Ficticia',
+        '2026-11-02T13:00:00.000Z',
+        '2026-11-02T14:00:00.000Z',
+        'CANCELLED',
+        '2026-10-20T12:00:00.000Z',
+        '2026-10-21T09:30:00.000Z',
+      );
+
+      const row = db.prepare('SELECT status, cancelled_at FROM reservations WHERE id = ?').get('res-cancelada') as {
+        status: string;
+        cancelled_at: string | null;
+      };
+
+      expect(row).toEqual({ status: 'CANCELLED', cancelled_at: '2026-10-21T09:30:00.000Z' });
+    } finally {
+      db.close();
+    }
+  });
+
   it.todo('CA-07: las reservas activas y canceladas sobreviven al reinicio del servidor');
 });
 

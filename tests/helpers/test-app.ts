@@ -1,6 +1,8 @@
 import { buildApp } from '../../src/app.js';
+import { loadConfig } from '../../src/config/index.js';
 import { openDatabase, type Db } from '../../src/db/database.js';
 import { migrate } from '../../src/db/migrator.js';
+import { readInventory, seedInventory } from '../../src/db/seed.js';
 
 export interface TestContext {
   app: ReturnType<typeof buildApp>;
@@ -11,6 +13,7 @@ export interface TestContext {
 export async function createTestContext(): Promise<TestContext> {
   const db = openDatabase(':memory:');
   migrate(db);
+  seedInventory(db, readInventory(loadConfig().inventoryFile));
   const app = buildApp({ db });
   await app.ready();
 
