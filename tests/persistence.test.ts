@@ -7,6 +7,14 @@ import { openDatabase, type Db } from '../src/db/database.js';
 import { migrate } from '../src/db/migrator.js';
 import { assertSeparateDatabases, DatabaseResetError, resetTestDatabase } from '../src/db/reset.js';
 import { readInventory, seedInventory } from '../src/db/seed.js';
+import {
+  availabilityUrl,
+  cancelReservation,
+  createReservation,
+  postReservation,
+  type ReservationResponse,
+} from './helpers/reservations.js';
+import { createTestContextWithDb } from './helpers/test-app.js';
 
 function tableNames(db: Db): string[] {
   const rows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>;
@@ -196,8 +204,199 @@ describe('Carga del inventario', () => {
       db.close();
     }
   });
+});
 
-  it.todo('CA-07: las reservas activas y canceladas sobreviven al reinicio del servidor');
+describe('Persistencia en un archivo de base de datos (CA-07, RF-05)', () => {
+  const ACTIVE_RESERVATION = {
+    equipmentId: 'MIC-01',
+    requester: 'Ana Ficticia',
+    startAt: '2026-11-02T10:00:00-03:00',
+    endAt: '2026-11-02T11:00:00-03:00',
+  };
+
+  const CANCELLED_RESERVATION = {
+    equipmentId: 'MIC-01',
+    requester: 'Bruno Ficticio',
+    startAt: '2026-11-02T12:00:00-03:00',
+    endAt: '2026-11-02T13:00:00-03:00',
+  };
+
+  /** Abre la base en archivo, aplica las migraciones y carga el inventario. */
+  function openFileDatabase(file: string): Db {
+    const db = openDatabase(file);
+    migrate(db);
+    seedInventory(db, readInventory(loadConfig().inventoryFile));
+    return db;
+  }
+
+  it('CA-07: tras cerrar y reabrir la app, la activa sigue bloqueando su intervalo y la cancelada conserva su estado sin bloquear', async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'lab-persistence-'));
+    const databaseFile = path.join(directory, 'reservas.db');
+
+    try {
+      // Primera apertura: se crea una reserva activa y se cancela otra.
+      const first = await createTestContextWithDb(openFileDatabase(databaseFile));
+      let activeId: string;
+      let activeCreatedAt: string;
+      let cancelledId: string;
+      let cancelledCreatedAt: string;
+      let cancelledAt: string | null;
+      try {
+        const active = await createReservation(first, ACTIVE_RESERVATION);
+        activeId = active.id;
+        activeCreatedAt = active.createdAt;
+
+        const toCancel = await createReservation(first, CANCELLED_RESERVATION);
+        cancelledId = toCancel.id;
+        cancelledCreatedAt = toCancel.createdAt;
+
+        const cancelResponse = await cancelReservation(first, toCancel.id);
+        expect(cancelResponse.statusCode).toBe(200);
+        const cancelled = cancelResponse.json() as ReservationResponse;
+        expect(cancelled.status).toBe('CANCELLED');
+        expect(cancelled.cancelledAt).not.toBeNull();
+        cancelledAt = cancelled.cancelledAt;
+      } finally {
+        // Cierra la aplicacion y la conexion a la base de datos.
+        await first.close();
+      }
+
+      // Segunda apertura: la misma base en archivo.
+      const second = await createTestContextWithDb(openFileDatabase(databaseFile));
+      try {
+        const listResponse = await second.app.inject({
+          method: 'GET',
+          url: '/reservations?equipmentId=MIC-01',
+        });
+        expect(listResponse.statusCode).toBe(200);
+        const persisted = listResponse.json() as ReservationResponse[];
+        expect(persisted).toHaveLength(2);
+
+        // La reserva activa conserva sus datos y sigue ACTIVE.
+        const active = persisted.find((reservation) => reservation.id === activeId);
+        expect(active).toEqual({
+          id: activeId,
+          equipmentId: 'MIC-01',
+          requester: 'Ana Ficticia',
+          startAt: '2026-11-02T13:00:00.000Z',
+          endAt: '2026-11-02T14:00:00.000Z',
+          status: 'ACTIVE',
+          createdAt: activeCreatedAt,
+          cancelledAt: null,
+        });
+
+        // La reserva cancelada conserva su estado y su marca de cancelacion.
+        const cancelled = persisted.find((reservation) => reservation.id === cancelledId);
+        expect(cancelled).toEqual({
+          id: cancelledId,
+          equipmentId: 'MIC-01',
+          requester: 'Bruno Ficticio',
+          startAt: '2026-11-02T15:00:00.000Z',
+          endAt: '2026-11-02T16:00:00.000Z',
+          status: 'CANCELLED',
+          createdAt: cancelledCreatedAt,
+          cancelledAt,
+        });
+
+        // La reserva activa sigue bloqueando su intervalo.
+        const activeAvailability = await second.app.inject({
+          method: 'GET',
+          url: availabilityUrl(ACTIVE_RESERVATION.startAt, ACTIVE_RESERVATION.endAt),
+        });
+        expect(activeAvailability.statusCode).toBe(200);
+        expect(activeAvailability.json()).toEqual({
+          equipmentId: 'MIC-01',
+          start: '2026-11-02T13:00:00.000Z',
+          end: '2026-11-02T14:00:00.000Z',
+          available: false,
+          conflicts: [activeId],
+        });
+
+        const overlap = await postReservation(second, {
+          ...ACTIVE_RESERVATION,
+          requester: 'Carla Ficticia',
+        });
+        expect(overlap.statusCode).toBe(409);
+        expect(overlap.json()).toMatchObject({ error: { code: 'OVERLAP' } });
+
+        // La reserva cancelada no bloquea su intervalo.
+        const cancelledAvailability = await second.app.inject({
+          method: 'GET',
+          url: availabilityUrl(CANCELLED_RESERVATION.startAt, CANCELLED_RESERVATION.endAt),
+        });
+        expect(cancelledAvailability.statusCode).toBe(200);
+        expect(cancelledAvailability.json()).toEqual({
+          equipmentId: 'MIC-01',
+          start: '2026-11-02T15:00:00.000Z',
+          end: '2026-11-02T16:00:00.000Z',
+          available: true,
+          conflicts: [],
+        });
+
+        // La fila cancelada sigue en la base: no se elimino fisicamente.
+        const cancelledRow = second.db
+          .prepare('SELECT id, status, cancelled_at FROM reservations WHERE id = ?')
+          .get(cancelledId) as { id: string; status: string; cancelled_at: string | null };
+        expect(cancelledRow).toEqual({
+          id: cancelledId,
+          status: 'CANCELLED',
+          cancelled_at: cancelledAt,
+        });
+
+        // El intervalo liberado por la cancelacion admite una nueva reserva.
+        const reused = await postReservation(second, {
+          ...CANCELLED_RESERVATION,
+          requester: 'Diego Ficticio',
+        });
+        expect(reused.statusCode).toBe(201);
+      } finally {
+        await second.close();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('RF-01: reinicializar la base en archivo no duplica el inventario ni borra las reservas', async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'lab-persistence-'));
+    const databaseFile = path.join(directory, 'reservas.db');
+
+    try {
+      const first = await createTestContextWithDb(openFileDatabase(databaseFile));
+      let reservationId: string;
+      try {
+        const active = await createReservation(first, ACTIVE_RESERVATION);
+        reservationId = active.id;
+      } finally {
+        await first.close();
+      }
+
+      // Se vuelve a inicializar la base (migraciones + carga del inventario).
+      const second = await createTestContextWithDb(openFileDatabase(databaseFile));
+      try {
+        const equipment = second.db.prepare('SELECT id FROM equipment ORDER BY id').all() as Array<{
+          id: string;
+        }>;
+        const reservations = second.db
+          .prepare('SELECT id, status FROM reservations')
+          .all() as Array<{ id: string; status: string }>;
+
+        expect(equipment).toHaveLength(5);
+        expect(equipment.map((row) => row.id)).toEqual([
+          'FUE-01',
+          'MIC-01',
+          'MIC-02',
+          'MUL-01',
+          'OSC-01',
+        ]);
+        expect(reservations).toEqual([{ id: reservationId, status: 'ACTIVE' }]);
+      } finally {
+        await second.close();
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('Reinicio de la base de datos de pruebas (db:reset)', () => {

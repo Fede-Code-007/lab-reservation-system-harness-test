@@ -17,8 +17,7 @@ export function createTestDatabase(): Db {
   return db;
 }
 
-export async function createTestContext(): Promise<TestContext> {
-  const db = createTestDatabase();
+export async function createTestContextWithDb(db: Db): Promise<TestContext> {
   const app = buildApp({ db });
   await app.ready();
 
@@ -30,4 +29,8 @@ export async function createTestContext(): Promise<TestContext> {
       db.close();
     },
   };
+}
+
+export async function createTestContext(): Promise<TestContext> {
+  return createTestContextWithDb(createTestDatabase());
 }

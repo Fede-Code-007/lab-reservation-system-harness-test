@@ -5,7 +5,7 @@
 - [x] 2 Base de datos - Implementada
 - [x] 3 Reglas de reservas - Implementada
 - [x] 4 API - Implementada
-- [ ] 5 Persistencia
+- [x] 5 Persistencia - Implementada 
 - [ ] 6 React
 - [ ] 7 Verificación y README
 
@@ -36,6 +36,7 @@
 | 2026-10-21 | Mantener el `415 Unsupported Media Type` de `POST /reservations/:id/cancel` ante un `Content-Type` no soportado, sin tocar la lógica de negocio ni el transporte | Decisión del desarrollador (2026-10-21): la corrección depende de qué exija el contrato de la tarea 4, que todavía no está evaluado | Aceptar `application/x-www-form-urlencoded` o ignorar el `Content-Type` en las rutas `POST` sin cuerpo (cambio de transporte sin análisis previo) | La limitación queda documentada en la tarea 3 de este archivo; si la tarea 4 exige admitir ese tipo de contenido, se corrige allí con una prueba específica |
 | 2026-10-21 | `POST /reservations/:id/cancel` acepta cualquier `Content-Type` y descarta el cuerpo | `SPEC.md` §8 no define cuerpo para ese endpoint y fija los códigos HTTP esperados (200/201/400/404/409). El `415` que devolvía Fastify ante un `Content-Type` no soportado quedaba fuera de los códigos de la especificación, y la decisión anterior quedó condicionada al contrato de la tarea 4, que exige «códigos HTTP exactamente como en el SPEC» | Mantener el `415` (comportamiento anterior) | Se registra un parser de contenido comodín (`'*'`) en `src/app.ts` que ignora el cuerpo; los parsers JSON y texto plano de Fastify conservan prioridad, así que `POST /reservations` sigue exigiendo JSON. Sustituye la fila anterior |
 | 2026-10-21 | Declarar en las rutas los esquemas de respuesta de error `400`, `404` y `409` | `SPEC.md` §8 fija el formato de error `{ "error": { "code", "message" } }`; expresarlo en typebox deja el contrato de transporte en los propios esquemas y hace que Fastify serialice las respuestas de error con esa forma | Dejar el formato de error solo en el manejador global de errores de `src/app.ts` | Se reutiliza `ErrorResponseSchema` (ya definido en `src/schemas/common.ts`) en las rutas de equipment y de reservas; el envelope queda garantizado por esquema y verificado con `app.inject` |
+| 2026-10-21 | Verificar la persistencia mediante el comportamiento observable de la API y no solo con consultas SQL | «La reserva activa sigue bloqueando su intervalo y la cancelada no» son reglas de negocio (RN-04/RN-06) que se comprueban mejor con la disponibilidad y la creación de reservas que con el estado de las filas | Consultas SQL directas sobre la tabla `reservations` | La prueba CA-07 usa `app.inject` para la disponibilidad, la creación y la cancelación; las consultas SQL quedan solo para comprobar que la fila cancelada no se eliminó físicamente (RF-04) |
 
 ## Evidencias de uso del agente
 - Captura del modelo seleccionado en OpenCode: `docs/agent-evidence/Evidencia de la versión de opencode y del modelo seleccionado.png`
@@ -60,6 +61,10 @@
 - Resumen respuesta del quinto prompt: `docs/agent-evidence/Resumen resultados del quinto PROMPT.png`
 - Git diff luego del quinto prompt: `docs/agent-evidence/Git diff luego del quinto PROMPT.png`
 - Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales quinto PROMPT.png`
+- Captura del sexto prompt: `docs/agent-evidence/Captura de pantalla del sexto PROMPT.png`
+- Resumen respuesta del sexto prompt: `docs/agent-evidence/Resumen resultados del sexto PROMPT.png`
+- Git diff luego del sexto prompt: `docs/agent-evidence/Git diff luego del sexto PROMPT.png`
+- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales sexto PROMPT.png`
 
 ## Verificaciones iniciales ejecutadas por mí
 | Comando o verificación | Versión | Resultado real |
@@ -274,7 +279,7 @@
 **Hallazgos y pendientes**
 - El `415 Unsupported Media Type` de `POST /reservations/:id/cancel` quedó corregido (decisión del 2026-10-21 en la tabla de decisiones de este archivo), con la prueba específica en `tests/api.test.ts`.
 - `GET /reservations?equipmentId=` (valor vacío) responde `400 VALIDATION_ERROR` porque el esquema exige un identificador no vacío. `SPEC.md` no define ese caso; queda documentado como comportamiento vigente.
-- CA-07 (persistencia tras reiniciar el servidor) y el `todo` de RF-01 siguen pendientes y pertenecen a las tareas 5 y 2 respectivamente. **No se marcan como completados** hasta implementar y verificar la tarea correspondiente.
+- CA-07 (persistencia tras reiniciar el servidor) y el `todo` de RF-01 siguen pendientes y pertenecen a las tareas 5 y 2 respectivamente. **No se marcan como completados** hasta implementar y verificar la tarea correspondiente. (Actualización posterior a la tarea 5: ambos quedaron implementados en `tests/persistence.test.ts`, pendiente de verificación humana.)
 - La documentación de `README.md` (§12) todavía no incluye los ejemplos de los endpoints de reservas, que ahora responden con datos reales. Queda pendiente de la tarea 7.
 
 ### Verificaciones ejecutadas por mí
@@ -282,6 +287,40 @@
 |---|---|---|
 | `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
 | `npm test` | Vitest 5.0.5 | Sin errores reportados; 5 archivos pasados, 100 pruebas pasadas y 2 pruebas `todo` |
+| `npm run build` | TypeScript 6.0.3 | Exit 0 |
+
+## Tarea 5 — Persistencia (SPEC.md §5 RF-05, §11 CA-07, §4 y §7)
+**Estado:** implementada. La tarea consistió en agregar la prueba de persistencia sobre una base SQLite en un archivo temporal: crear una reserva activa y otra cancelada, cerrar la aplicación y la conexión, reabrir el mismo archivo y comprobar que la activa sigue bloqueando su intervalo y que la cancelada conserva su estado sin bloquear. No se modificaron `SPEC.md` ni `data/inventory.json`.
+
+**Requisitos atendidos:** CA-07 (las reservas activas y canceladas sobreviven al reinicio; la activa sigue bloqueando y la cancelada no), RF-05 (los datos se conservan al detener y reiniciar), RF-04/RN-06 (la cancelada conserva su estado y libera el intervalo) y RF-01 (el inventario no se duplica al reiniciar).
+
+**Archivos modificados**
+- `tests/persistence.test.ts` — nuevo bloque `describe('Persistencia en un archivo de base de datos (CA-07, RF-05)')` con 2 pruebas reales:
+  - CA-07: base temporal en archivo; se crea una reserva `ACTIVE` (MIC-01, 10:00-11:00 -03:00) y otra que se cancela (MIC-01, 12:00-13:00 -03:00); se cierra la app y la conexión; se reabre el mismo archivo y se verifica que la activa conserva sus datos y sigue `ACTIVE`, que la cancelada conserva `status: CANCELLED` y su `cancelledAt` original, que la disponibilidad de la activa responde `available: false` con su id en `conflicts` y que la creación de una reserva superpuesta responde `409 OVERLAP`, que la disponibilidad de la cancelada responde `available: true` sin conflictos, que la fila cancelada sigue en la base (no se eliminó físicamente) y que el intervalo liberado admite una nueva reserva (`201`).
+  - RF-01: al reinicializar la base (migraciones + carga del inventario) el inventario queda con 5 unidades sin duplicar y la reserva `ACTIVE` sigue existiendo.
+  - Se eliminó el `it.todo` de CA-07 que estaba en este archivo.
+- `tests/helpers/test-app.ts` — se exporta `createTestContextWithDb(db)`, que construye la aplicación sobre una base ya abierta (en archivo); `createTestContext()` ahora la reutiliza con la base en memoria.
+- `tests/equipment.test.ts` — se eliminó el `it.todo` de RF-01 («el inventario no se duplica cuando el servidor se reinicia»), cubierto por la segunda prueba de `tests/persistence.test.ts`.
+
+**Verificaciones ejecutadas por el agente (resultados reales)**
+| Comprobación | Resultado real |
+|---|---|
+| Control negativo de la prueba CA-07 | Con la segunda apertura apuntando a `:memory:` en lugar del archivo, la prueba falla en `expect(persisted).toHaveLength(2)` (0 reservas leídas); se restauró la reapertura del archivo y la prueba volvió a pasar |
+| `npm run typecheck` | Sin errores (0 diagnósticos) |
+| `npm test` | 5 archivos de prueba, 102 aprobadas, 0 `todo` pendientes, 0 fallos (antes: 5 archivos, 100 aprobadas y 2 `todo`) |
+| `npx vitest run tests/persistence.test.ts` | 1 archivo, 15 pruebas aprobadas, 0 fallos (antes: 13) |
+| `npm run build` | Sin errores; generó `dist/` |
+| Estado de `data/reservas.db` tras la suite | 5 unidades, 0 reservas: las pruebas usan bases temporales en el directorio temporal del sistema y no tocan la base de desarrollo |
+
+**Pendientes**
+- `README.md` (§12) todavía no documenta la ubicación de la base de datos, el uso de `DB_PATH` ni el procedimiento de reinicio: pendiente de la tarea 7.
+- La interfaz web (tarea 6) todavía no consume la API.
+
+### Verificaciones ejecutadas por mí
+| Comando o verificación | Versión | Resultado real |
+|---|---|---|
+| `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
+| `npm test` | Vitest 5.0.5 | Sin errores reportados; 5 archivos pasados, 102 pruebas pasadas y 0 pruebas `todo` |
 | `npm run build` | TypeScript 6.0.3 | Exit 0 |
 
 

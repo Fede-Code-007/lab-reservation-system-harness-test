@@ -41,8 +41,6 @@ describe('GET /equipment', () => {
       await context.close();
     }
   });
-
-  it.todo('RF-01: el inventario no se duplica cuando el servidor se reinicia');
 });
 
 describe('GET /equipment/:id/availability', () => {
