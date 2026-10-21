@@ -1,7 +1,7 @@
 # Entorno del agente
 
 - **Entorno:** OpenCode.
-- **Versión:** 1.18.13.
+- **Versión:** 1.19.3.
 - **Proveedor del modelo:** Minimax.
 - **Modelo seleccionado:** MiniMax M3.1 Flash (free)
 - **Identificador técnico:** minimax/minimax-m3.1-flash:free
