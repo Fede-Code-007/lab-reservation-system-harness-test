@@ -7,11 +7,15 @@ import {
   ReservationParamsSchema,
   ReservationSchema,
 } from '../../schemas/index.js';
+import { createEquipmentRepository } from '../equipment/equipment.repository.js';
 import { createReservationRepository } from './reservations.repository.js';
 import { createReservationService } from './reservations.service.js';
 
 export function registerReservationsRoutes(app: TypeboxApp, db: Db): void {
-  const service = createReservationService(createReservationRepository(db));
+  const service = createReservationService({
+    reservations: createReservationRepository(db),
+    equipment: createEquipmentRepository(db),
+  });
 
   app.get(
     '/reservations',
@@ -36,7 +40,10 @@ export function registerReservationsRoutes(app: TypeboxApp, db: Db): void {
         },
       },
     },
-    async (request) => service.create(request.body),
+    async (request, reply) => {
+      reply.status(201);
+      return service.create(request.body);
+    },
   );
 
   app.get(

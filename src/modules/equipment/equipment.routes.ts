@@ -6,11 +6,15 @@ import {
   EquipmentListResponseSchema,
   EquipmentParamsSchema,
 } from '../../schemas/index.js';
+import { createReservationRepository } from '../reservations/reservations.repository.js';
 import { createEquipmentRepository } from './equipment.repository.js';
 import { createEquipmentService } from './equipment.service.js';
 
 export function registerEquipmentRoutes(app: TypeboxApp, db: Db): void {
-  const service = createEquipmentService(createEquipmentRepository(db));
+  const service = createEquipmentService({
+    equipment: createEquipmentRepository(db),
+    reservations: createReservationRepository(db),
+  });
 
   app.get(
     '/equipment',

@@ -1,9 +1,9 @@
 # Progreso y decisiones
 
 ## Estado
-- [x] 1 Andamiaje - Completada
-- [x] 2 Base de datos - Completada
-- [ ] 3 Reglas de reservas
+- [x] 1 Andamiaje - Implementada
+- [x] 2 Base de datos - Implementada
+- [x] 3 Reglas de reservas - Implementada
 - [ ] 4 API
 - [ ] 5 Persistencia
 - [ ] 6 React
@@ -27,6 +27,13 @@
 | 2026-10-20 | Migraciones escritas como módulos TypeScript (`src/db/migrations/*.ts`) en lugar de archivos `.sql` | Evita un paso de copia de archivos no TypeScript en `npm run build` y mantiene el proyecto sin scripts de shelldependent | Archivos `.sql` copiados al build | La estructura de `db/migrations/` se mantiene; el runner aplica cada migración dentro de una transacción y la tabla `schema_migrations` evita duplicados |
 | 2026-10-21 | Las listas de endpoints (`GET /equipment`, `GET /reservations`) responden con un arreglo JSON simple | `SPEC.md` §8 (líneas 235-244) define el formato de reserva, disponibilidad y error, pero no el de las listas. El único envelope que define la especificación es el de error; los casos de éxito son payloads directos, y los arreglos ya aparecen como valores dentro de objetos (`conflicts`). `[]` no es ambiguo para la lista vacía | Envolver en `{ "equipment": [...] }` / `{ "reservations": [...] }` | Decisión ratificada por el desarrollador; ratifica lo ya implementado en `src/schemas/equipment.ts` y `src/schemas/reservations.ts` (`Type.Array`) |
 | 2026-10-20 | Las rutas validan únicamente formato y presencia de campos; las reglas de negocio quedan en los servicios | `SPEC.md` §6 fija el orden de validación (400 → 404 → 409) y la separación de responsabilidades de §9 | Implementar ahora toda la lógica en las rutas | `trim` y longitud máxima de 80 del solicitante (RN-02) se aplican en el servicio, no en el esquema de transporte, para no contradecir la especificación |
+| 2026-10-21 | Validar los instantes ISO 8601 en la capa de negocio (`src/shared/iso-date.ts`) y no solo con el patrón del esquema de transporte | El patrón de `IsoDateTimeSchema` acepta fechas que no existen en el calendario (por ejemplo `2026-02-30`), y V8 las convierte por rollover a marzo. `SPEC.md` RN-08 exige un instante válido con zona explícita | Aceptar cualquier valor que case con el patrón de transporte (deja pasar `2026-02-30`) | `parseIsoToUtc` valida mes, día real del mes (con años bisiestos), hora, minuto, segundo y desplazamiento; devuelve `null` o lanza `ValidationError` (400) |
+| 2026-10-21 | Resolver la superposición con una única consulta SQL parametrizada (`findActiveConflicts`) compartida por la creación y la disponibilidad | `SPEC.md` RN-07 exige lógica coherente entre disponibilidad y creación; RN-06 excluye las reservas canceladas | Duplicar el predicado de superposición en cada servicio | La consulta aplica `equipment_id = ? AND status = 'ACTIVE' AND start_at < nuevoFin AND end_at > nuevoInicio`; los instantes se guardan normalizados a UTC con formato de ancho fijo (`YYYY-MM-DDTHH:mm:ss.sssZ`), por lo que la comparación por cadena coincide con la cronológica |
+| 2026-10-21 | Exponer `transaction<T>(work)` en el repositorio y dejar la decisión de rechazar en el servicio | RN-07 pide que la comprobación y la escritura protegidas por una transacción de SQLite; la regla de negocio (409 `OVERLAP`) pertenece al servicio, la atomicidad al repositorio | Poner la transacción dentro del repositorio junto con la regla de negocio, o una transacción en la capa HTTP | `reservations.service` abre la transacción, consulta conflictos, lanza `OverlapError` si hay alguno e inserta; si la transacción falla, SQLite revierte los cambios (cubierto por un test de rollback) |
+| 2026-10-21 | Inyectar dependencias como objeto (`{ reservations, equipment }`) en los servicios de reservas y de equipment | Los dos servicios necesitan el inventario y las reservas; un objeto evita el orden posicional de los argumentos y deja explícita la dependencia cruzada | Parámetros posicionales (`createService(repository, equipmentRepository)`) | Se actualizaron `reservations.routes.ts` y `equipment.routes.ts`; el módulo de equipment importa el repositorio de reservas y viceversa, sin reglas duplicadas |
+| 2026-10-21 | `POST /reservations` fija explícitamente el código 201 en la ruta | Fastify no asigna 201 por defecto en `POST`; sin `reply.status(201)` la ruta respondía 200 pese a declarar el esquema de respuesta 201 | Dejar el 200 implícito y cambiar el esquema de respuesta | La ruta hace `reply.status(201)`; verificado manualmente (`HTTP 201` con la reserva devuelta) |
+| 2026-10-21 | Aplicar el máximo de 80 caracteres del solicitante sobre el valor ya recortado | `SPEC.md` RN-02 dice que se recorta antes de guardar; el límite aplica a lo que se persiste | Validar los 80 caracteres sobre el valor original sin recortar | Un solicitante de 100 caracteres con espacios alrededor se acepta si el valor recortado entra en 80; el test del servicio lo documenta |
+| 2026-10-21 | Mantener el `415 Unsupported Media Type` de `POST /reservations/:id/cancel` ante un `Content-Type` no soportado, sin tocar la lógica de negocio ni el transporte | Decisión del desarrollador (2026-10-21): la corrección depende de qué exija el contrato de la tarea 4, que todavía no está evaluado | Aceptar `application/x-www-form-urlencoded` o ignorar el `Content-Type` en las rutas `POST` sin cuerpo (cambio de transporte sin análisis previo) | La limitación queda documentada en la tarea 3 de este archivo; si la tarea 4 exige admitir ese tipo de contenido, se corrige allí con una prueba específica |
 
 ## Evidencias de uso del agente
 - Captura del modelo seleccionado en OpenCode: `docs/agent-evidence/Evidencia de la versión de opencode y del modelo seleccionado.png`
@@ -41,6 +48,12 @@
 - Resultados finales del tercer prompt: `docs/agent-evidence/Captura de resultados reales del tercer PROMPT.png`
 - Git diff luego del tercer prompt: `docs/agent-evidence/Git diff luego del tercer PROMPT.png`
 - Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales tercer PROMPT.png`
+- Captura del cuarto prompt: `docs/agent-evidence/Captura de pantalla del cuarto PROMPT.png`
+- Captura de la respuesta final del cuarto prompt parte 1: `docs/agent-evidence/Respuesta Final Promp 4.png`
+- Captura de la respuesta final del cuarto prompt parte 2: `docs/agent-evidence/Respuesta Final Promp 4 - Parte 2.png`
+- Captura de la respuesta final del cuarto prompt parte 3: `docs/agent-evidence/Respuesta Final Promp 4 - Parte 3.png`
+- Git diff luego del cuarto prompt: `docs/agent-evidence/Git diff luego del cuarto PROMPT.png`
+- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales cuarto PROMPT.png`
 
 ## Verificaciones iniciales ejecutadas por mí
 | Comando o verificación | Versión | Resultado real |
@@ -160,6 +173,60 @@
 | `npm test` | Vitest 5.0.5 | Sin errores reportados; 3 archivos pasados, 21 pruebas pasadas y 16 pruebas `todo` |
 | `npm run build` | TypeScript 6.0.3 | Exit 0 |
 |Revisar el modelo de datos de §7 y el formato de `GET /equipment` contra la especificación.| - | Todo coincide correctamente |
+
+## Tarea 3 — Reglas de reservas (SPEC.md §5 RF-03/RF-04, §6 RN-01 a RN-08, §11 CA-01 a CA-08)
+**Estado:** implementada, pendiente de verificación humana. Seatangono los servicios de reservas y de equipment, el repositorio de reservas y las utilidades compartidas de instantes ISO. No se modificaron `SPEC.md` ni `data/inventory.json`.
+
+**Requisitos atendidos:** RF-03 (crear reserva), RF-04 (cancelar conservando datos, sin borrado físico, 409 al cancelar dos veces), RF-02 (disponibilidad coherente con la creación), RN-01 (orden 400 → 404 → 409), RN-02 (solicitante no vacío, recortado, máx. 80), RN-03 (inicio < fin), RN-04 (criterio de superposición, límites consecutivos permitidos), RN-05 (independencia entre unidades), RN-06 (las canceladas no bloquean), RN-07 (transacción para comprobación + inserción), RN-08 (instantes con zona explícita, normalizados a UTC).
+
+**Archivos creados**
+- `src/shared/iso-date.ts` — `parseIsoToUtc` (devuelve `null` si el instante no es válido) y `parseRequiredInstant` (lanza `ValidationError`, 400). Valida el calendario: mes, día real del mes (años bisiestos), hora, minuto, segundo y desplazamiento horario.
+- `tests/reservations.service.test.ts` — 19 pruebas del servicio y del repositorio, sin pasar por HTTP.
+- `tests/helpers/reservations.ts` — utilidades compartidas por los archivos de prueba (`postReservation`, `createReservation`, `cancelReservation`, `availabilityUrl`).
+
+**Archivos modificados**
+- `src/modules/reservations/reservations.repository.ts` — `list`, `findById`, `findActiveConflicts` (consulta parametrizada de superposiciones sobre reservas `ACTIVE`), `insert`, `cancel` (actualiza el estado; devuelve `undefined` si no existe o ya estaba cancelada) y `transaction<T>()`.
+- `src/modules/reservations/reservations.service.ts` — `create` (valida solicitante, instantes e intervalo; comprueba la existencia de la unidad; dentro de una transacción comprueba conflictos e inserta), `cancel` (404 si no existe, 409 `ALREADY_CANCELLED` si ya estaba cancelada, conserva los datos y libera el intervalo), `getById` (404) y `list`.
+- `src/modules/equipment/equipment.service.ts` — `checkAvailability` usa la misma consulta de conflictos que la creación y devuelve `start`/`end` normalizados a UTC.
+- `src/modules/reservations/reservations.routes.ts` — inyecta ambos repositorios y fija `reply.status(201)` en `POST /reservations`.
+- `src/modules/equipment/equipment.routes.ts` — inyecta el repositorio de reservas para la disponibilidad.
+- `tests/reservations.test.ts` — los 17 `it.todo` de la tarea 1 se reemplazaron por pruebas reales (24 casos).
+- `tests/equipment.test.ts` — se agregaron 5 pruebas de disponibilidad (CA-08) y se conserva el `todo` de RF-01.
+- `tests/helpers/test-app.ts` — se exporta `createTestDatabase()` (base en memoria migrada y sembrada) reutilizado por `createTestContext()`.
+
+**Verificaciones ejecutadas por el agente (resultados reales)**
+| Comprobación | Resultado real |
+|---|---|
+| Pruebas escritas antes de implementar | Fase roja: `npx vitest run tests/reservations.test.ts tests/reservations.service.test.ts tests/equipment.test.ts` → 3 archivos fallidos, 38 pruebas fallidas, 10 aprobadas, 1 `todo` (los 501 `NOT_IMPLEMENTED` del andamiaje) |
+| `npm run typecheck` | Sin errores (0 diagnósticos) |
+| `npm test` | 4 archivos de prueba, 63 aprobadas, 2 `todo` pendientes (RF-01 sin duplicar al reiniciar y CA-07 de persistencia, de otras tareas), 0 fallos (antes: 21 aprobadas y 16 `todo`) |
+| `npm run build` | Sin errores; generó `dist/` |
+| `POST /reservations` (curl, base temporal) | `HTTP 201` con `{"id":"8916b472-…","equipmentId":"MIC-01","requester":"Ana Ficticia","startAt":"2026-11-02T13:00:00.000Z","endAt":"2026-11-02T14:00:00.000Z","status":"ACTIVE","createdAt":"…","cancelledAt":null}` |
+| `POST /reservations` superpuesto (10:30-11:30 sobre 10:00-11:00) | `HTTP 409` → `{"error":{"code":"OVERLAP","message":"La unidad \"MIC-01\" ya tiene una reserva activa para ese intervalo."}}` |
+| `POST /reservations` con unidad inexistente | `HTTP 404` → `{"error":{"code":"NOT_FOUND","message":"No existe la unidad \"MIC-99\"."}}` |
+| `POST /reservations` con fecha inexistente (`2026-02-30`) | `HTTP 400` → `VALIDATION_ERROR` con mensaje sobre el instante ISO 8601 |
+| `POST /reservations` con inicio igual al fin | `HTTP 400` → `{"error":{"code":"VALIDATION_ERROR","message":"El inicio de la reserva debe ser anterior al fin."}}` |
+| `GET /equipment/MIC-01/availability` (10:30-11:30) | `HTTP 200` → `{"equipmentId":"MIC-01","start":"2026-11-02T13:30:00.000Z","end":"2026-11-02T14:30:00.000Z","available":false,"conflicts":["8916b472-…"]}` |
+| `GET /equipment/MIC-01/availability` (12:00-13:00) | `HTTP 200` → `available":true,"conflicts":[]` |
+| `POST /reservations/:id/cancel` (curl, sin cuerpo) | `HTTP 200` con la reserva en `CANCELLED` y `cancelledAt` informado; los datos originales se conservan |
+| `POST /reservations/:id/cancel` repetido | `HTTP 409` → `{"error":{"code":"ALREADY_CANCELLED",…}}`; `cancelled_at` no cambia (verificado en la base y en el test) |
+| `POST /reservations` sobre el intervalo liberado | `HTTP 201`: la reserva cancelada no bloquea el horario (RN-06) |
+| `GET /reservations?equipmentId=MIC-01` | `HTTP 200` con las reservas activas y canceladas, con `status` y `cancelledAt` |
+| Eliminación de las 2 reservas ficticias de `data/reservas.db` (aprobada por el desarrollador) | `DELETE FROM reservations WHERE id = ?` sobre los 2 ids: 1 fila borrada por cada id; estado final verificado: 5 unidades (`FUE-01`, `MIC-01`, `MIC-02`, `MUL-01`, `OSC-01`), 0 reservas y una única migración `001_initial` |
+
+**Hallazgos y pendientes**
+- `POST /reservations/:id/cancel` responde `415 Unsupported Media Type` si el cliente envía un `Content-Type` no soportado (por ejemplo el `application/x-www-form-urlencoded` que agrega `Invoke-WebRequest` de PowerShell). Con `curl -X POST` sin cuerpo o con `app.inject` responde correctamente. **Limitación documentada y mantenida sin cambios por decisión del desarrollador (2026-10-21)**: no se altera la lógica de negocio ni el manejo del transporte hasta evaluar qué exige el contrato de la tarea 4. Si ese contrato obliga a admitir ese tipo de contenido, se corrigirá en la tarea 4 agregando una prueba específica.
+- La verificación manual inicial se hizo por error contra `data/reservas.db` (la base de desarrollo) en lugar de una base temporal, y dejó 2 reservas ficticias `ACTIVE`: `f06a913f-9d73-4da9-b020-1242d315095b` (MIC-01, Carla Ficticia) y `c63f6364-d87a-4a29-aaf5-b1608d54e173` (MIC-02, Diego Ficticio). **Eliminadas con aprobación del desarrollador (2026-10-21)**, solo esas dos filas; el estado final de `data/reservas.db` se verificó en 5 unidades, 0 reservas y una única migración `001_initial`, tal como figura en la tarea 2.
+- CA-07 (persistencia tras reiniciar el servidor) y el `todo` de RF-01 siguen pendientes y pertenecen a las tareas 5 y 2 respectivamente. **No se marcan como completados** hasta implementar y verificar la tarea correspondiente.
+- La documentación de `README.md` (§12) todavía no incluye los ejemplos de los endpoints de reservas, que ahora responden con datos reales. Queda pendiente de la tarea 7.
+
+### Verificaciones ejecutadas por mí
+| Comando o verificación | Versión | Resultado real |
+|---|---|---|
+| `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
+| `npm test` | Vitest 5.0.5 | Sin errores reportados; 4 archivos pasados, 63 pruebas pasadas y 2 pruebas `todo` |
+| `npm run build` | TypeScript 6.0.3 | Exit 0 |
+| Revisar las reglas de RN-01 a RN-08 y los criterios CA-01 a CA-08 contra la implementación | - | Todo concuerda perfectamente |
 
 
 
