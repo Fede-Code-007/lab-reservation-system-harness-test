@@ -24,9 +24,15 @@ export const ReservationListQuerySchema = Type.Object({
   equipmentId: Type.Optional(Type.String({ minLength: 1 })),
 });
 
+/**
+ * El esquema de transporte comprueba únicamente la presencia de los campos.
+ * Las reglas de negocio del solicitante (RN-02: no puede estar vacio ni
+ * contener solo espacios, se recorta y admite hasta 80 caracteres) se aplican
+ * en `reservations.service.ts`, que es la capa que decide sobre ellas.
+ */
 export const CreateReservationBodySchema = Type.Object({
   equipmentId: Type.String({ minLength: 1 }),
-  requester: Type.String({ minLength: 1, pattern: '\\S' }),
+  requester: Type.String({ minLength: 1 }),
   startAt: IsoDateTimeSchema,
   endAt: IsoDateTimeSchema,
 });

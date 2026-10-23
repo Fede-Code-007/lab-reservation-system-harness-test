@@ -223,7 +223,7 @@ Códigos HTTP esperados:
 
 Los errores deben incluir un mensaje comprensible y no exponer información interna innecesaria.
 
-Códigos de error en el cuerpo: `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `OVERLAP` (409), `ALREADY_CANCELLED` (409).
+Códigos de error en el cuerpo: `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `OVERLAP` (409).
 
 ### Cuerpo de POST /reservations
 ```json

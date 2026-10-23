@@ -1,4 +1,8 @@
-import type { ApiErrorBody, Availability, Equipment, Reservation } from './types';
+// La extension `.js` es la que exige la resolucion de modulos ESM del
+// proyecto raiz (NodeNext) y permite que las pruebas del backend importen este
+// modulo. Es una importacion de solo tipos, de modo que el empaquetador la
+// elimina y nunca se resuelve en tiempo de ejecucion.
+import type { ApiErrorBody, Availability, Equipment, Reservation } from './types.js';
 
 /**
  * Error devuelto por la API. El mensaje que se muestra en la interfaz es

@@ -66,7 +66,7 @@ Quedaron pendientes el criterio CA-07, correspondiente a la persistencia despué
 
 ### Decisión humana y fundamento
 
-La decisión humana fue **aceptar provisionalmente el resultado técnico de la implementación**.
+La decisión humana fue **aceptar el resultado técnico de la implementación**.
 
 Esta decisión se fundamenta en los resultados de las pruebas de contrato, la ejecución de la suite completa, la comprobación de tipos y la compilación del proyecto. Las pruebas específicas permiten comprobar el comportamiento de los seis endpoints y verificar que las respuestas observadas respeten el contrato esperado en los escenarios contemplados.
 
@@ -87,11 +87,10 @@ La evidencia de este episodio debe conservarse junto con la versión entregada d
 
 | Evidencia | Ubicación o procedimiento |
 |---|---|
-| Modelo seleccionado | `docs/agent-evidence/Evidencia de la versión de opencode y del modelo seleccionado.png` |
-| Captura del prompt de la tarea | `docs/agent-evidence/Captura de pantalla del quinto PROMPT.png` |
-| Resumen respuesta final del agente | `docs/agent-evidence/Resumen resultados del quinto PROMPT.png` |
-| Diferencias de código posteriores al prompt | `docs/agent-evidence/Git diff luego del quinto PROMPT.png` |
-| Comprobaciones manuales | `docs/agent-evidence/Comprobaciones manuales quinto PROMPT.png` |
+| Captura del prompt de la tarea | `docs/agent-evidence/quinto_prompt.png` |
+| Resumen respuesta final del agente | `docs/agent-evidence/resumen_respuesta_quinto_prompt.png` |
+| Diferencias de código posteriores al prompt | `docs/agent-evidence/git_diff_quinto_prompt.png` |
+| Comprobaciones manuales | `docs/agent-evidence/comprobaciones_manuales_quinto_prompt.png`, `docs/pruebas_api_pt1.png` y `docs/agent-evidence/pruebas_api_pt2.png` |
 | Pruebas del contrato HTTP | `tests/api.test.ts` |
 | Rutas de equipment | `src/modules/equipment/equipment.routes.ts` |
 | Rutas de reservas | `src/modules/reservations/reservations.routes.ts` |

@@ -44,10 +44,12 @@ Los resultados de `npm run typecheck`, `npm test` y `npm run build` fueron satis
 - `tests/equipment.test.ts`: eliminación del caso pendiente de RF-01, cubierto por la prueba de persistencia.
 - Salidas de `npm run typecheck`, `npx vitest run tests/persistence.test.ts`, `npm test` y `npm run build`.
 - Capturas disponibles en `docs/agent-evidence/`:
-  - `Captura de pantalla del sextp PROMPT.png`
-  - `Resumen resultados del sextp PROMPT.png`
-  - `Git diff luego del sextp PROMPT.png`
-  - `Comprobaciones manuales sextp PROMPT.png`
+  - `sexto_prompt.png`
+  - `resumen_respuesta_sexto_prompt.png`
+  - `git_diff_sexto_prompt.png`
+  - `comprobaciones_manuales_sexto_prompt.png`
+  - `pruebas_api_pt1.png`
+  - `pruebas_api_pt2.png`
 
 **Conclusión**
 

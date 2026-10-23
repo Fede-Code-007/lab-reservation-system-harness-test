@@ -1,7 +1,8 @@
 import { Type } from '@fastify/type-provider-typebox';
+import { ISO_INSTANT_PATTERN_SOURCE } from '../shared/iso-instant.js';
 
 export const IsoDateTimeSchema = Type.String({
-  pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,3})?)?(Z|[+-]\\d{2}:\\d{2})$',
+  pattern: ISO_INSTANT_PATTERN_SOURCE,
 });
 
 export const ErrorResponseSchema = Type.Object({

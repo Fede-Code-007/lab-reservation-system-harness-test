@@ -358,6 +358,86 @@ describe('SPEC.md §8 — POST /reservations', () => {
 
       expect(response.statusCode).toBe(400);
       expectErrorEnvelope(response.json(), 'VALIDATION_ERROR');
+      // La regla de RN-02 se aplica en la capa de negocio y no en el esquema
+      // de transporte, de modo que el mensaje identifica al solicitante.
+      expect((response.json() as { error: { message: string } }).error.message).toMatch(/solicitante/i);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('responde 400 VALIDATION_ERROR si el solicitante es una cadena vacia (RN-02)', async () => {
+    const context = await createTestContext();
+    try {
+      const response = await context.app.inject({
+        method: 'POST',
+        url: '/reservations',
+        payload: { ...SPEC_BODY, requester: '' },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expectErrorEnvelope(response.json(), 'VALIDATION_ERROR');
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('acepta campos adicionales en el cuerpo: SPEC.md no los prohibe', async () => {
+    const context = await createTestContext();
+    try {
+      const response = await context.app.inject({
+        method: 'POST',
+        url: '/reservations',
+        payload: { ...SPEC_BODY, notas: 'campo no definido por la especificacion' },
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).not.toHaveProperty('notas');
+    } finally {
+      await context.close();
+    }
+  });
+
+  it('RN-08: permite reservar un intervalo pasado y no impone limites de duracion ni de anticipacion', async () => {
+    const context = await createTestContext();
+    try {
+      const pasado = await context.app.inject({
+        method: 'POST',
+        url: '/reservations',
+        payload: {
+          equipmentId: 'MIC-01',
+          requester: 'Ana Ficticia',
+          startAt: '2020-01-01T10:00:00-03:00',
+          endAt: '2020-01-01T11:00:00-03:00',
+        },
+      });
+      const largo = await context.app.inject({
+        method: 'POST',
+        url: '/reservations',
+        payload: {
+          equipmentId: 'MIC-02',
+          requester: 'Ana Ficticia',
+          startAt: '2026-11-02T10:00:00-03:00',
+          endAt: '2026-11-12T10:00:00-03:00',
+        },
+      });
+      const lejano = await context.app.inject({
+        method: 'POST',
+        url: '/reservations',
+        payload: {
+          equipmentId: 'OSC-01',
+          requester: 'Ana Ficticia',
+          startAt: '2099-01-01T10:00:00-03:00',
+          endAt: '2099-01-01T11:00:00-03:00',
+        },
+      });
+
+      expect(pasado.statusCode).toBe(201);
+      expect((pasado.json() as { startAt: string }).startAt).toBe('2020-01-01T13:00:00.000Z');
+      expect(largo.statusCode).toBe(201);
+      expect((largo.json() as { endAt: string }).endAt).toBe('2026-11-12T13:00:00.000Z');
+      expect(lejano.statusCode).toBe(201);
+      expect((lejano.json() as { startAt: string }).startAt).toBe('2099-01-01T13:00:00.000Z');
     } finally {
       await context.close();
     }

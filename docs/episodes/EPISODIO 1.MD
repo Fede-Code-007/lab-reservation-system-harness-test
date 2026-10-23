@@ -58,7 +58,7 @@ Las pruebas también contemplaron fechas inexistentes, intervalos inválidos y u
 
 ### Decisión humana y fundamento
 
-La decisión humana fue **aceptar provisionalmente el resultado técnico de la implementación.**.
+La decisión humana fue **aceptar el resultado técnico de la implementación.**.
 
 Esta decisión se fundamentó en la ejecución satisfactoria de las pruebas automatizadas, la comprobación de los tipos de TypeScript, la generación del proyecto y los resultados observados mediante solicitudes HTTP. Estas evidencias respaldaron el funcionamiento de las operaciones principales, pero no sustituyeron la revisión humana de todos los requisitos.
 
@@ -78,13 +78,12 @@ La evidencia de este episodio debe conservarse junto con la versión entregada d
 
 | Evidencia | Ubicación o procedimiento |
 |---|---|
-| Modelo seleccionado | `docs/agent-evidence/Evidencia de la versión de opencode y del modelo seleccionado.png` |
-| Instrucción y respuesta iniciales | `docs/agent-evidence/Captura de pantalla del cuarto PROMPT.png` |
-| Git diff luego de completar la instucción | `docs/agent-evidence/Git diff luego del cuarto PROMPT.png` |
+| Instrucción y respuesta iniciales | `docs/agent-evidence/cuarto_prompt.png.png` |
+| Git diff luego de completar la instucción | `docs/agent-evidence/git_diff_cuarto_prompt.png` |
 | Pruebas de reservas | `tests/reservations.test.ts` y `tests/reservations.service.test.ts`. |
 | Pruebas de disponibilidad | `tests/equipment.test.ts`. |
 | Implementación | `src/modules/reservations/`, `src/modules/equipment/` y `src/shared/iso-date.ts`. |
 | Verificación automatizada | Ejecución de `npm run typecheck`, `npm test` y `npm run build`. |
-| Verificación manual | `docs/agent-evidence/Comprobaciones manuales cuarto PROMPT.png` y revisión de la trazabilidad entre el código generado y la documentación |
+| Verificación manual | `docs/agent-evidence/comprobaciones_manuales_cuarto_prompt.png` y revisión de la trazabilidad entre el código generado y la documentación |
 
 **Conclusión del episodio.** La delegación permitió implementar las principales reglas de reservas y obtener resultados verificables mediante pruebas automatizadas y solicitudes HTTP. La intervención humana se concentró en establecer las restricciones, revisar decisiones técnicas, autorizar una operación de limpieza y delimitar los aspectos que debían permanecer pendientes. El episodio muestra que la producción de código por parte del agente no equivale por sí sola a la aceptación definitiva de la solución.

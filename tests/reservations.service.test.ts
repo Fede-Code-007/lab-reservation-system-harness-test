@@ -330,6 +330,75 @@ describe('reservations.service - consulta', () => {
   });
 });
 
+describe('reservations.service - politica temporal (RN-08)', () => {
+  it('permite reservar un intervalo ya pasado', () => {
+    const db = createTestDatabase();
+    try {
+      const service = createService(db);
+
+      const reservation = service.create({
+        equipmentId: 'MIC-01',
+        requester: 'Ana Ficticia',
+        startAt: '2020-01-01T10:00:00-03:00',
+        endAt: '2020-01-01T11:00:00-03:00',
+      });
+
+      expect(reservation).toMatchObject({
+        status: 'ACTIVE',
+        startAt: '2020-01-01T13:00:00.000Z',
+        endAt: '2020-01-01T14:00:00.000Z',
+      });
+      expect(rows(db)).toHaveLength(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('no impone limite de duracion de la reserva', () => {
+    const db = createTestDatabase();
+    try {
+      const service = createService(db);
+
+      const reservation = service.create({
+        equipmentId: 'MIC-01',
+        requester: 'Ana Ficticia',
+        startAt: '2026-11-02T10:00:00-03:00',
+        endAt: '2026-11-12T10:00:00-03:00',
+      });
+
+      expect(reservation).toMatchObject({
+        status: 'ACTIVE',
+        startAt: '2026-11-02T13:00:00.000Z',
+        endAt: '2026-11-12T13:00:00.000Z',
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('no impone limite de anticipacion de la reserva', () => {
+    const db = createTestDatabase();
+    try {
+      const service = createService(db);
+
+      const reservation = service.create({
+        equipmentId: 'MIC-01',
+        requester: 'Ana Ficticia',
+        startAt: '2099-01-01T10:00:00-03:00',
+        endAt: '2099-01-01T11:00:00-03:00',
+      });
+
+      expect(reservation).toMatchObject({
+        status: 'ACTIVE',
+        startAt: '2099-01-01T13:00:00.000Z',
+        endAt: '2099-01-01T14:00:00.000Z',
+      });
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('reservations.repository - transaccion (RN-07)', () => {
   it('revierte los cambios cuando el trabajo de la transaccion falla', () => {
     const db = createTestDatabase();

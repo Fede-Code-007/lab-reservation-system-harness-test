@@ -7,7 +7,7 @@
 - [x] 4 API - Implementada
 - [x] 5 Persistencia - Implementada 
 - [x] 6 React - Implementada 
-- [ ] 7 Verificación y README
+- [x] 7 Verificación y README - Implementada.
 
 ## Decisiones
 | Fecha | Decisión | Motivo | Alternativas | Consecuencia |
@@ -42,43 +42,55 @@
 | 2026-10-21 | El cliente usa `Intl` (`America/Argentina/Buenos_Aires`) para convertir la hora local a UTC en lugar de fijar el desplazamiento `-03:00` | `SPEC.md` RN-08 exige zona explícita y normalización a UTC; calcular el desplazamiento real evita duplicar el supuesto de zona horaria en el código | Concatenar `-03:00` al valor local | `client/src/lib/datetime.ts` calcula el desplazamiento de la zona para cada instante con `Intl.DateTimeFormat` y refina el resultado; las pruebas cubren la medianoche, los segundos, las fechas inexistentes y el cruce de día |
 | 2026-10-21 | El proxy de Vite reenvía los prefijos `/equipment` y `/reservations` al backend, con destino configurable por `API_PROXY_TARGET` | `SPEC.md` §3 exige que el cliente consuma la API mediante el proxy de Vite; el destino por defecto es `http://127.0.0.1:3000`, que coincide con `HOST`/`PORT` de `src/config/index.ts` | Proxy de `/` (rompería la carga de módulos del propio Vite) | `client/vite.config.ts` define el proxy para `server` y para `preview`; el navegador nunca hace peticiones cross-origin, por lo que no hace falta CORS en la API. El servidor de Vite escucha en `127.0.0.1` (explícito) porque con el valor por defecto `localhost` se enlazaba solo a IPv6 y no respondía en `http://127.0.0.1:5173` |
 | 2026-10-21 | Completar la verificación manual del cliente React | Comprobar el comportamiento de la interfaz integrada con la API y la persistencia | Confiar únicamente en las pruebas automatizadas y en la verificación del agente | Se completaron las comprobaciones manuales de inventario, disponibilidad, creación, conflictos, cancelación e historial de reservas |
+| 2026-10-21 | Fuente única del patrón de instante ISO 8601 en `src/shared/iso-instant.ts` | La revisión del proyecto detectó que `src/schemas/common.ts` y `src/shared/iso-date.ts` declaraban dos patrones equivalentes pero independientes: un riesgo real de divergencia entre la validación de transporte y la de negocio. `SPEC.md` RN-08 exige un único criterio de formato | Mantener los dos patrones por separado y documentar el motivo; o mover el analizador completo a la capa de transporte | Se crea `src/shared/iso-instant.ts`, que no importa nada y exporta `ISO_INSTANT_PATTERN_SOURCE` (cadena, la que usa el esquema de transporte) e `ISO_INSTANT_PATTERN` (expresión regular derivada, la que usa el analizador). `src/schemas/common.ts` y `src/shared/iso-date.ts` consumen ese módulo, de modo que la dependencia va de las capas superiores hacia un módulo hoja y no se introducen dependencias entre capas de negocio y transporte. Se comprobó que el patrón unificado coincide con el anterior en 21 casos, con y sin flag `u`. `tests/iso-instant.test.ts` verifica que el esquema usa la fuente compartida, que el patrón se aplica en el transporte y que la API acepta exactamente los instantes que la capa de negocio considera válidos |
+| 2026-10-21 | Eliminar el patrón `\\S` del esquema de transporte de `requester` | La decisión del 2026-10-20 establece que el `trim` y el límite de 80 caracteres del solicitante (RN-02) se aplican en el servicio y no en el esquema de transporte. El patrón `\\S` reproducía en la capa HTTP la regla de «no puede contener únicamente espacios», que es una regla de negocio | Mover la regla al esquema con un mensaje genérico; o mantener el patrón y aceptar la duplicación | `src/schemas/reservations.ts` conserva `minLength: 1` como comprobación de presencia del campo y deja el resto de RN-02 en `reservations.service.ts`. El contrato observable no cambia: el estado sigue siendo `400` y el código sigue siendo `VALIDATION_ERROR`; lo que cambia es que el mensaje ahora identifica al solicitante («El solicitante no puede estar vacio ni contener solo espacios.»). La prueba de `tests/api.test.ts` que cubre el solicitante solo con espacios se ajustó para fijar ese mensaje |
+| 2026-10-21 | Mantener `GET /reservations?equipmentId=` (valor vacío) con respuesta `400 VALIDATION_ERROR` | La revisión del proyecto confirmó que `SPEC.md` no define ese caso. El comportamiento actual es coherente con el resto de las validaciones de entrada del proyecto (el esquema exige un identificador no vacío) y ya estaba documentado y cubierto por una prueba | Aceptar el filtro vacío y devolver el historial completo; o devolver `400` con un mensaje específico | Sin cambio de comportamiento. Se mantiene la prueba existente en `tests/api.test.ts` y se documenta el caso como comportamiento no especificado en `README.md` §2.13 |
+| 2026-10-21 | Aceptar los campos adicionales del cuerpo de `POST /reservations` | La revisión del proyecto comprobó que `SPEC.md` §8 no exige rechazarlos y que el cuerpo de ejemplo define exactamente cuatro campos, sin una cláusula de campos prohibidos. TypeBox no cierra `additionalProperties` por defecto | Cerrar el esquema con `additionalProperties: false` (cambiaría el contrato observable sin base en la especificación) | Sin cambio de contrato. Se agrega una prueba en `tests/api.test.ts` que fija el comportamiento actual (se aceptan y se ignoran) y se documenta en `README.md` §2.13, para que una modificación futura sea deliberada |
+| 2026-10-21 | Cubrir la capa HTTP del cliente con pruebas desde la raíz (`tests/client-api.test.ts`) | La revisión del proyecto detectó que la cobertura automatizada de RF-06 se limitaba a la conversión de zona horaria, mientras que la construcción de las peticiones y la traducción de los errores de la API no tenían prueba. La verificación manual ya realizada por el desarrollador se conserva y no se sustituye | Agregar Vitest, jsdom y Testing Library al proyecto `client/` (dependencias nuevas); o probar los componentes React con un entorno de DOM | Se reutiliza el Vitest de la raíz, sin dependencias nuevas: `tests/client-api.test.ts` sustituye `globalThis.fetch` por un doble de prueba y verifica las URLs, los métodos, el cuerpo JSON y la traducción del envelope de error a `ApiError`. Para que el módulo sea importable desde la raíz (resolución `NodeNext`), `client/src/api.ts` importa sus tipos con la extensión `.js`; es una importación de solo tipos, de modo que el empaquetador la elimina y no cambia nada en tiempo de ejecución |
+| 2026-10-21 | Eliminar la base residual `data/verificacion-manual.db` y los procesos residuales de la verificación manual | La revisión del proyecto detectó que la base temporal usada en la verificación manual de la tarea 6 seguía en `data/` y que el servidor de la API (`node dist/server.js`) y el de Vite seguían en ejecución, con la base abierta | Conservar la base y los procesos; o eliminarlos sin detener los procesos | La base contenía las 5 unidades del inventario y una única reserva ficticia ya cancelada (`Ana prueba`), sin datos que conservar; el archivo está ignorado por Git y no lo referencia ningún script ni documento. Se detuvieron los procesos residuales y se eliminaron `data/verificacion-manual.db`, `-wal` y `-shm`. `data/reservas.db` se verificó intacta (5 unidades, 0 reservas, una migración `001_initial`) y el procedimiento de verificación manual documentado en `README.md` §2.12 indica usar siempre una base temporal y detener los servidores al terminar |
 
-## Evidencias de uso del agente
-- Captura del modelo seleccionado en OpenCode: `docs/agent-evidence/Evidencia de la versión de opencode y del modelo seleccionado.png`
-- Captura del primer prompt con su respuesta: `docs/agent-evidence/Captura del primer prompt.png`
-- Git diff luego del primer prompt: `docs\agent-evidence\Captura de git diff luego del primer prompt.png`
-- Captura del segundo prompt: `docs/agent-evidence/Captura de pantalla del segundo PROMPT.png`
-- Resumen de la respuesta segundo prompt: `docs/agent-evidence/Resumen final respuesta del segundo PROMPT parte 1.png`
-- Continuación del resumen: `docs/agent-evidence/Resumen final respuesta del segundo PROMPT parte 2.png`
-- Git diff luego del segundo prompt: `docs/agent-evidence/Git diff luego del segundo PROMPT.png`
-- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales segundo PROMPT.png` 
-- Captura del tercer prompt: `docs/agent-evidence/Captura de pantalla del tercer PROMPT.png`
-- Resultados finales del tercer prompt: `docs/agent-evidence/Captura de resultados reales del tercer PROMPT.png`
-- Git diff luego del tercer prompt: `docs/agent-evidence/Git diff luego del tercer PROMPT.png`
-- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales tercer PROMPT.png`
-- Captura del cuarto prompt: `docs/agent-evidence/Captura de pantalla del cuarto PROMPT.png`
-- Captura de la respuesta final del cuarto prompt parte 1: `docs/agent-evidence/Respuesta Final Promp 4.png`
-- Captura de la respuesta final del cuarto prompt parte 2: `docs/agent-evidence/Respuesta Final Promp 4 - Parte 2.png`
-- Captura de la respuesta final del cuarto prompt parte 3: `docs/agent-evidence/Respuesta Final Promp 4 - Parte 3.png`
-- Git diff luego del cuarto prompt: `docs/agent-evidence/Git diff luego del cuarto PROMPT.png`
-- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales cuarto PROMPT.png`
-- Captura del quinto prompt: `docs/agent-evidence/Captura de pantalla del quinto PROMPT.png`
-- Resumen respuesta del quinto prompt: `docs/agent-evidence/Resumen resultados del quinto PROMPT.png`
-- Git diff luego del quinto prompt: `docs/agent-evidence/Git diff luego del quinto PROMPT.png`
-- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales quinto PROMPT.png`
-- Captura del sexto prompt: `docs/agent-evidence/Captura de pantalla del sexto PROMPT.png`
-- Resumen respuesta del sexto prompt: `docs/agent-evidence/Resumen resultados del sexto PROMPT.png`
-- Git diff luego del sexto prompt: `docs/agent-evidence/Git diff luego del sexto PROMPT.png`
-- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales sexto PROMPT.png`
-- Captura del septimo prompt: `docs/agent-evidence/Captura de pantalla del septimo PROMPT.png`
-- Resumen respuesta del septimo prompt: `docs/agent-evidence/Resumen resultados del septimo PROMPT.png`
-- Git diff luego del septimo prompt: `docs/agent-evidence/Git diff luego del septimo PROMPT.png`
-- Comprobaciones manuales: `docs/agent-evidence/Comprobaciones manuales septimo PROMPT.png`
-- Captura de la interfaz gráfica: `docs/agent-evidence/Captura de la interfaz.png`
-- Captura de consulta de disponibilidad (reserva disponible): `docs/agent-evidence/Consulta disponibilidad.png`
-- Captura de consulta de disponibilidad (reserva no disponible): `docs/agent-evidence/Consulta no disponible.png`
-- Error al intentar reservar en un horario no disponible: `docs/agent-evidence/Conflicto reserva.png`
-- Reserva cancelada, el horario vuelve a estar disponible: `docs/agent-evidence/Reserva cancelada.png`
+## Evidencias 
+- Captura del modelo seleccionado en OpenCode: `docs/agent-evidence/version_opencode_modelo.png`
+- Captura del primer prompt con su respuesta: `docs/agent-evidence/primer_prompt.png`
+- Git diff luego del primer prompt: `docs/agent-evidence/git_diff_primer_prompt.png`
+- Captura del segundo prompt: `docs/agent-evidence/segundo_prompt.png`
+- Resumen de la respuesta segundo prompt: `docs/agent-evidence/resumen_respuesta_segundo_prompt_pt1.png`
+- Continuación del resumen: `docs/agent-evidence/resumen_respuesta_segundo_prompt_pt2.png`
+- Git diff luego del segundo prompt: `docs/agent-evidence/git_diff_segundo_prompt.png`
+- Comprobaciones manuales: `docs/agent-evidence/comprobaciones_manuales_segundo_prompt.png` 
+- Captura del tercer prompt: `docs/agent-evidence/tercer_prompt.png`
+- Resultados finales del tercer prompt: `docs/agent-evidence/resumen_respuesta_tercer_prompt.png`
+- Git diff luego del tercer prompt: `docs/agent-evidence/git_diff_tercer_prompt.png`
+- Comprobaciones manuales: `docs/agent-evidence/comprobaciones_manuales_tercer_prompt.png`
+- Captura del cuarto prompt: `docs/agent-evidence/cuarto_prompt.png`
+- Captura de la respuesta final del cuarto prompt parte 1: `docs/agent-evidence/resumen_respuesta_cuarto_prompt_pt1.png`
+- Captura de la respuesta final del cuarto prompt parte 2: `docs/agent-evidence/resumen_respuesta_cuarto_prompt_pt2.png`
+- Captura de la respuesta final del cuarto prompt parte 3: `docs/agent-evidence/resumen_respuesta_cuarto_prompt_pt3.png`
+- Git diff luego del cuarto prompt: `docs/agent-evidence/git_diff_cuarto_prompt.png`
+- Comprobaciones manuales: `docs/agent-evidence/comprobaciones_manuales_cuarto_prompt.png`
+- Captura del quinto prompt: `docs/agent-evidence/quinto_prompt.png`
+- Resumen respuesta del quinto prompt: `docs/agent-evidence/resumen_respuesta_quinto_prompt.png`
+- Git diff luego del quinto prompt: `docs/agent-evidence/git_diff_quinto_prompt.png`
+- Comprobaciones manuales: `docs/agent-evidence/comprobaciones_manuales_quinto_prompt.png`
+- Captura del sexto prompt: `docs/agent-evidence/sexto_prompt.png`
+- Resumen respuesta del sexto prompt: `docs/agent-evidence/resumen_respuesta_sexto_prompt.png`
+- Git diff luego del sexto prompt: `docs/agent-evidence/git_diff_sexto_prompt.png`
+- Comprobaciones manuales: `docs/agent-evidence/comprobaciones_manuales_sexto_prompt.png`
+- Captura del septimo prompt: `docs/agent-evidence/septimo_prompt.png`
+- Resumen respuesta del septimo prompt: `docs/agent-evidence/resumen_respuesta_septimo_prompt.png`
+- Git diff luego del septimo prompt: `docs/agent-evidence/git_diff_septimo_prompt.png`
+- Comprobaciones manuales: `docs/agent-evidence/comprobaciones_manuales_septimo_prompt.png`
+- Captura de la interfaz gráfica: `docs/agent-evidence/captura_interfaz_web.png`
+- Captura de consulta de disponibilidad (reserva disponible): `docs/agent-evidence/captura_consulta_reserva_disponible_interfaz_web.png`
+- Captura de consulta de disponibilidad (reserva no disponible): `docs/agent-evidence/captura_consulta_reserva_no_disponible_interfaz_web.png`
+- Error al intentar reservar en un horario no disponible: `docs/agent-evidence/captura_conflicto_reservar_interfaz_web.png`
+- Reserva cancelada, el horario vuelve a estar disponible: `docs/agent-evidence/captura_reserva_cancelada_interfaz_web.png`
+- Pruebas API parte 1: `docs/agent-evidence/pruebas_api_pt1.png`
+- Pruebas API parte 2: `docs/agent-evidence/pruebas_api_pt2.png`
+- Revisión de la trazabilidad por parte del agente: `docs/agent-evidence/resumen_validacion_requisitos_por_agente.png`
+- Documentación de los episodios de delegación: `docs/episodes/EPISODIO 1.MD`, `docs/episodes/EPISODIO 2.MD` y `docs/episodes/EPISODIO 3.MD`
+- Descripción del entorno del agente (versión, modelo, permisos y contexto): `docs/agent-evidence/ENTORNO.md`
+- Documentación de instalación, ejecución, verificación, agente y decisiones: `README.md`
 
 ## Verificaciones iniciales ejecutadas por mí
 | Comando o verificación | Versión | Resultado real |
@@ -391,6 +403,80 @@
 | `npm run build` | Por confirmar | Pendiente de ejecutar y registrar el resultado final |
 | `npm run client:build` | TypeScript 6.0.3 + Vite 8.3.5 | Exit 0; bundle generado en `client/dist/` |
 | Verificación manual de la interfaz React en un navegador | Verificación humana | Completada: inventario, consulta de disponibilidad, creación de reservas, conflictos por superposición, cancelación e historial. Evidencias registradas en `docs/agent-evidence/`. |
+
+## Tarea 7 — Verificación y README (SPEC.md §12 y §14, revisión de trazabilidad)
+
+**Estado:** implementada.
+
+**Requisitos y documentación atendidos:** §12 (comandos documentados de instalación, migración, carga de inventario, ejecución, compilación, pruebas, verificación de tipos y reinicio del entorno de prueba) y §14 (la documentación permite comprender y comprobar el resultado sin depender del agente). También cubre el resumen de §1–§11 que exige la consigna de la tarea: especificación breve, solución, preparación del agente y registro de decisiones y delegación.
+
+### Archivos creados
+
+- `README.md` — cuatro secciones: **1. Especificación breve** (problema y alcance, RF-01 a RF-06, RN-01 a RN-08, requisitos no funcionales, supuestos, CA-01 a CA-09 y decisiones significativas), **2. Solución** (arquitectura y estructura de directorios, tecnologías y versiones efectivas, instalación y archivos de bloqueo, configuración y variables de entorno, base de datos, migraciones e inventario, ejecución, reinicio de datos, comandos de verificación, endpoints con ejemplos reales, procedimiento de verificación manual, limitaciones y comportamientos no especificados), **3. Preparación del agente** (herramienta y versión, modelo y configuración, permisos, instrucciones y contexto, adaptaciones, conservación del progreso y enlaces a las evidencias) y **4. Registro de decisiones y delegación** (resumen de decisiones y los tres episodios exigidos, con objetivo, trabajo delegado, decisiones, archivos, verificaciones, evidencias y estado de aceptación humana).
+- `src/shared/iso-instant.ts` — fuente única del formato de instante ISO 8601 (cadena `ISO_INSTANT_PATTERN_SOURCE` y expresión regular derivada `ISO_INSTANT_PATTERN`) y `parseIsoToUtc`, sin imports.
+- `tests/iso-instant.test.ts` — 8 pruebas: coherencia entre esquema de transporte y capa de negocio, aplicación efectiva del patrón, normalización a UTC y rechazo de instantes mal formados o con calendario inexistente.
+- `tests/client-api.test.ts` — 9 pruebas de la capa HTTP del cliente: construcción de las peticiones del contrato de §8 y traducción de los errores de la API a `ApiError`.
+
+### Archivos modificados
+
+- `src/schemas/common.ts` — `IsoDateTimeSchema` usa `ISO_INSTANT_PATTERN_SOURCE` en lugar de su propio patrón.
+- `src/schemas/reservations.ts` — se eliminó el patrón `\\S` de `requester` (duplicación de RN-02); se conserva `minLength: 1` como comprobación de presencia del campo.
+- `src/shared/iso-date.ts` — queda como la adaptación de la capa de negocio (`parseRequiredInstant` → `ValidationError` 400); el análisis y el patrón se movieron al módulo hoja.
+- `client/src/api.ts` — la importación de solo tipos pasa a `./types.js` para que el módulo sea importable desde la raíz con resolución `NodeNext`.
+- `tests/reservations.service.test.ts` — nuevo bloque `describe('reservations.service - politica temporal (RN-08)')` con 3 pruebas.
+- `tests/api.test.ts` — 3 pruebas nuevas: solicitante vacío (RN-02), campos adicionales en el cuerpo, y política temporal de RN-08 (pasado, duración, anticipación). La prueba del solicitante solo con espacios ahora fija además el mensaje de la capa de negocio.
+- `PROGRESS.md` — estado de la tarea 7, decisiones nuevas y esta sección.
+
+### Hallazgos de la revisión y criterio adoptado
+
+| # | Hallazgo | Clasificación | Criterio aplicado | Resultado |
+|---|---|---|---|---|
+| 1 | RN-08 sin pruebas específicas (reservas en el pasado; sin límites de duración ni de anticipación) | Falta de cobertura | Se verificó el comportamiento actual antes de tocar nada: el servicio no consulta el reloj ni impone límites, por lo que se **podía** añadir la prueba sin cambiar la implementación | 3 pruebas de servicio y 1 de API. Sin cambios de implementación |
+| 2 | RN-02 duplicada en `src/schemas/reservations.ts` (patrón `\\S`) | Riesgo de divergencia con la decisión registrada | La decisión del 2026-10-21 ubica `trim` y longitud en el servicio; el patrón `\\S` reproducía en el transporte la regla de «solo espacios» | Se eliminó el patrón. El contrato observable se mantiene (400 + `VALIDATION_ERROR`); el mensaje pasa a identificar al solicitante. Prueba ajustada |
+| 3 | Patrones de instante duplicados en `src/schemas/common.ts` y `src/shared/iso-date.ts` | Riesgo de divergencia | Se evaluaron las dos alternativas: mantenerlos separados con pruebas de no divergencia, o compartir una definición. Se eligió compartir, en un módulo hoja sin imports, para que la dependencia vaya de las capas superiores hacia abajo | Fuente única en `src/shared/iso-instant.ts`, con 8 pruebas de coherencia. Control negativo ejecutado (ver verificaciones) |
+| 4 | `GET /reservations?equipmentId=` (vacío) → `400 VALIDATION_ERROR` | Comportamiento no especificado | `SPEC.md` no lo define. No se cambia el contrato sin justificación: el comportamiento es coherente con el resto de validaciones de entrada y ya estaba documentado y probado | Sin cambio. Documentado en `README.md` §2.13 |
+| 5 | Campos adicionales en `POST /reservations` | Comportamiento no especificado | `SPEC.md` §8 no exige rechazarlos y el ejemplo define cuatro campos sin cláusula de campos prohibidos. No se cambia el contrato público arbitrariamente | Sin cambio. Se agregó una prueba que fija el comportamiento actual y se documentó |
+| 6 | Base residual `data/verificacion-manual.db` (+ `-wal`, `-shm`) y procesos residuales | Residuo descartable | Se comprobó el contenido (5 unidades y una reserva ficticia ya cancelada), que no lo referencia ningún script ni documento, que está ignorado por Git y que estaba en uso por el servidor de la API y el de Vite, que seguían en ejecución | Se detuvieron los procesos residuales y se eliminaron los tres archivos. `data/reservas.db` verificada intacta |
+| 7 | Cobertura de RF-06 | Cobertura automatizada parcial | La verificación manual ya realizada por el desarrollador se conserva como tal; no se declara inválida por no ser automatizada. Se automatizó lo que era viable sin dependencias nuevas | 9 pruebas nuevas de la capa HTTP del cliente. Los componentes React siguen con verificación manual |
+
+### Verificaciones ejecutadas por el agente (resultados reales)
+
+| Comprobación | Resultado real |
+|---|---|
+| Comportamiento de RN-08 verificado antes de escribir las pruebas | Reserva en `2020-01-01` → `201`; duración de 10 días → `201`; reserva en `2099` → `201`; no hay ningún control de reloj ni de límites en `reservations.service.ts` |
+| Control negativo de la guarda de divergencia | Con `src/schemas/common.ts` usando un patrón distinto del compartido, `tests/iso-instant.test.ts` falló en 3 de sus 8 pruebas; al restaurar el patrón compartido volvió a pasar |
+| Equivalencia del patrón unificado con el anterior | 21 casos del corpus comparados con y sin flag `u`: los dos patrones coinciden en todos |
+| `npm run typecheck` (raíz) | Sin errores (0 diagnósticos) |
+| `npm test` (raíz) | 8 archivos de prueba, **134 aprobadas**, 0 `todo` pendientes, 0 fallos (antes: 6 archivos y 111 aprobadas) |
+| `npm run build` (raíz) | Sin errores; generó `dist/` |
+| `npm --prefix client run typecheck` | Sin errores en `client/tsconfig.json` ni en `client/tsconfig.node.json` |
+| `npm run client:build` | Typecheck del cliente sin errores y build de Vite correcto: `dist/index.html` 0.41 kB, `dist/assets/index-*.css` 2.30 kB, `dist/assets/index-*.js` 230.59 kB (71.88 kB gzip), 22 módulos transformados |
+| `npx vitest run tests/iso-instant.test.ts tests/client-api.test.ts tests/api.test.ts tests/reservations.service.test.ts` | 4 archivos, 79 pruebas aprobadas, 0 fallos |
+| Captura de respuestas reales de la API (para el README) | `node dist/server.js` con `DB_PATH` apuntando a un archivo temporal en el directorio temporal del sistema y `PORT=3100`; 12 peticiones registradas con sus códigos (200, 201, 400, 404, 409) y sus cuerpos, transcriptas en `README.md` §2.11 |
+| Verificación de los ejemplos del README con `curl.exe` | `GET /equipment` → 200; `POST /reservations` → 201; disponibilidad → 200 con `available: true`; `POST /reservations` superpuesta → 409 `OVERLAP` |
+| Enlaces relativos del `README.md` | 84 enlaces comprobados contra el sistema de archivos: 0 rotos |
+| Sincronía de los archivos de bloqueo | `npm ci --dry-run` en la raíz y en `client/`: ambos informan `up to date` |
+| Estado de `data/` tras las verificaciones | `inventory.json`, `reservas.db` (5 unidades, 0 reservas, 1 migración `001_initial`) y `test.db` (5 unidades, 0 reservas). Se eliminaron `verificacion-manual.db`, `-wal` y `-shm`, y los procesos residuales (`node dist/server.js` y Vite) |
+| Estado de `data/reservas.db` tras la suite de pruebas | 5 unidades, 0 reservas, una única migración `001_initial`: las pruebas usan bases en memoria o en archivos temporales y no tocan la base de desarrollo |
+
+## Verificaciones finales ejecutadas por mí
+
+| Comando o verificación | Versión | Resultado real |
+|---|---|---|
+| `npm run typecheck` | TypeScript 6.0.3 | Exit 0 |
+| `npm test` | Vitest 5.0.5 | Sin errores reportados; 8 archivos pasados, 134 pruebas pasadas y 0 fallos |
+| `npm run build` | TypeScript 6.0.3 | Exit 0 |
+| `npm run client:build` | TypeScript 6.0.3 + Vite 8.3.5 | Exit 0; bundle generado en `client/dist/` |
+| Crear reserva A (MIC-01 10:00-11:00 -03:00) | Node.js 24 | 201 Created; `status: ACTIVE`; id `3ddea20d-f091-4f2e-8236-194465500bb7`; `startAt` 13:00Z, `endAt` 14:00Z (normalizado a UTC) |
+| Crear reserva B (MIC-01 12:00-13:00 -03:00) | Node.js 24 | 201 Created; `status: ACTIVE`; id `6150b7a7-cd9e-4cac-b3b0-6a7d302a5881`; 15:00Z-16:00Z | 
+| Cancelar B | Node.js 24 | 200 OK; `status: CANCELLED`; `cancelledAt: 2026-10-23T13:37:56.216Z`; resto de datos sin cambios | 
+| Listado antes del reinicio | Node.js 24 | 200; dos reservas: A `ACTIVE` y B `CANCELLED`, con `id`, `createdAt` y `cancelledAt` |
+| Reinicio sin `db:reset` | Node.js 24 | Servidor detenido y reiniciado con `npm run dev` sin `db:reset` | 
+| Listado después del reinicio | Node.js 24 | 200; dos reservas: A `ACTIVE` y B `CANCELLED`, con `id`, `createdAt` y `cancelledAt` iguales a los de las respuestas anteriores (comparación manual). | 
+| 10:30-11:30 sobre A | | 409 Conflict; `code: OVERLAP`; mensaje «La unidad "MIC-01" ya tiene una reserva activa para ese intervalo.» | 
+| 12:00-13:00 (horario de B, cancelada) | Node.js 24 | 201 Created; `status: ACTIVE`; id `18299f1e-83e6-405c-8e75-50e9e2f6ffd4` | 
+| Verificación manual de la interfaz React en un navegador | React 19.3.1; Vite 8.3.5; Verificación humana | Completada: inventario, consulta de disponibilidad, creación de reservas, conflictos por superposición, cancelación e historial. Evidencias registradas en `docs/agent-evidence/`. |
+| Revisión del `README.md` contra el código, los scripts y las respuestas observadas | Verificación humana | Todo correcto |
 
 
 
