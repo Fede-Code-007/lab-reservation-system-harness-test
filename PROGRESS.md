@@ -473,7 +473,7 @@
 | Listado antes del reinicio | Node.js 24 | 200; dos reservas: A `ACTIVE` y B `CANCELLED`, con `id`, `createdAt` y `cancelledAt` |
 | Reinicio sin `db:reset` | Node.js 24 | Servidor detenido y reiniciado con `npm run dev` sin `db:reset` | 
 | Listado después del reinicio | Node.js 24 | 200; dos reservas: A `ACTIVE` y B `CANCELLED`, con `id`, `createdAt` y `cancelledAt` iguales a los de las respuestas anteriores (comparación manual). | 
-| 10:30-11:30 sobre A | | 409 Conflict; `code: OVERLAP`; mensaje «La unidad "MIC-01" ya tiene una reserva activa para ese intervalo.» | 
+| 10:30-11:30 sobre A | Node.js 24 | 409 Conflict; `code: OVERLAP`; mensaje «La unidad "MIC-01" ya tiene una reserva activa para ese intervalo.» | 
 | 12:00-13:00 (horario de B, cancelada) | Node.js 24 | 201 Created; `status: ACTIVE`; id `18299f1e-83e6-405c-8e75-50e9e2f6ffd4` | 
 | Verificación manual de la interfaz React en un navegador | React 19.3.1; Vite 8.3.5; Verificación humana | Completada: inventario, consulta de disponibilidad, creación de reservas, conflictos por superposición, cancelación e historial. Evidencias registradas en `docs/agent-evidence/`. |
 | Revisión del `README.md` contra el código, los scripts y las respuestas observadas | Verificación humana | Todo correcto |
